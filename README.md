@@ -49,7 +49,12 @@ pip install flask flask-cors
 # Server starten
 python server.py
 
-# Browser öffnen: http://localhost:5000
+# Browser öffnen: http://localhost:5001
+```
+
+Port ändern:
+```bash
+PORT=5002 python server.py
 ```
 
 ## 📁 **Dateien im Paket**
@@ -106,11 +111,11 @@ cp zeiterfassung_backup_2025-06-23.db zeiterfassung.db
 ```
 
 ### **Netzwerk-Zugriff (optional):**
-In `server.py` ändern:
-```python
-app.run(host='0.0.0.0', port=5000, debug=False)
+Server auf allen Netzwerkschnittstellen starten:
+```bash
+PORT=5001 python server.py
 ```
-Dann von anderen PCs erreichbar unter: `http://[IP-ADRESSE]:5000`
+Dann von anderen PCs erreichbar unter: `http://[IP-ADRESSE]:5001`
 
 ## 🛠 **Problemlösung**
 
@@ -119,8 +124,8 @@ Dann von anderen PCs erreichbar unter: `http://[IP-ADRESSE]:5000`
 - Bei Installation "Add to PATH" aktivieren
 
 ### **"Port bereits belegt"**
-- In `server.py` Port ändern: `port=5001`
-- In `app.js` API_BASE_URL anpassen: `http://localhost:5001/api`
+- Anderen Port per Umgebungsvariable setzen, z.B.: `PORT=5002 ./start.sh`
+- In `app.js` API_BASE_URL entsprechend anpassen: `http://localhost:5002/api`
 
 ### **"Keine Verbindung zum Server"**
 - Prüfen ob `server.py` läuft

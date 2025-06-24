@@ -21,8 +21,12 @@ echo
 # Installiere Flask falls nicht vorhanden
 pip3 install flask flask-cors > /dev/null 2>&1
 
+# Port setzen (übernimmt vorhandene PORT-Variable oder nutzt 5001)
+PORT=${PORT:-5001}
+export PORT
+
 # Starte den Server
-echo "Server startet auf http://localhost:5000"
+echo "Server startet auf http://localhost:$PORT"
 echo
 echo "WICHTIG: Lassen Sie dieses Terminal offen!"
 echo "Zum Beenden drücken Sie Strg+C"
@@ -32,9 +36,9 @@ sleep 2
 
 # Öffne Browser (funktioniert auf macOS und Linux)
 if command -v open &> /dev/null; then
-    open http://localhost:5000
+    open http://localhost:$PORT
 elif command -v xdg-open &> /dev/null; then
-    xdg-open http://localhost:5000
+    xdg-open http://localhost:$PORT
 fi
 
 python3 server.py
