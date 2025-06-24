@@ -7,6 +7,9 @@ let currentMonth = 5; // Juni (0-based)
 let currentYear = 2025;
 let timeEntries = [];
 let employees = [];
+let revenueEntries = [];
+let currentRevenueMonth = 5;
+let currentRevenueYear = 2025;
 
 // Format date as YYYY-MM-DD in local time
 function formatDate(date) {
@@ -494,4 +497,120 @@ async function saveEmployee() {
         alert('Fehler beim Speichern des Mitarbeiters: ' + error.message);
     }
 }
+
+// -------------------- Umsatzfunktionen --------------------
+
+async function loadRevenueCalendar() {
+    const month = parseInt(document.getElementById('revMonthSelect').value);
+    const year = parseInt(document.getElementById('revYearSelect').value);
+
+    currentRevenueMonth = month;
+    currentRevenueYear = year;
+
+    try {
+        revenueEntries = await apiCall(`/revenue?year=${year}&month=${month + 1}`);
+        renderRevenueCalendar();
+    } catch (error) {
+        console.error('Error loading revenue:', error);
+        showError('Fehler beim Laden der Umsätze: ' + error.message);
+    }
+}
+
+function renderRevenueCalendar() {
+    const container = document.getElementById('revenueCalendarContainer');
+    const monthNames = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+    const dayNames = ['So','Mo','Di','Mi','Do','Fr','Sa'];
+
+    const firstDay = new Date(currentRevenueYear, currentRevenueMonth, 1);
+    const startDate = new Date(firstDay);
+    startDate.setDate(startDate.getDate() - firstDay.getDay());
+
+    let html = `
+        <div class="calendar-header">
+            ${monthNames[currentRevenueMonth]} ${currentRevenueYear}
+        </div>
+        <div class="calendar">
+    `;
+
+    dayNames.forEach(d => {
+        html += `<div class="calendar-day-header">${d}</div>`;
+    });
+
+    const currentDate = new Date(startDate);
+    for (let week = 0; week < 6; week++) {
+        for (let day = 0; day < 7; day++) {
+            const isCurrentMonth = currentDate.getMonth() === currentRevenueMonth;
+            const dateStr = formatDate(currentDate);
+            const entry = revenueEntries.find(r => r.date === dateStr);
+
+            let dayClass = 'calendar-day';
+            if (!isCurrentMonth) dayClass += ' other-month';
+            if (entry) dayClass += ' has-data';
+
+            const info = entry ? `<div class="day-info">${entry.amount}€</div>` : '';
+
+            html += `
+                <div class="${dayClass}" onclick="openRevenueModal('${dateStr}')">
+                    <div class="day-number">${currentDate.getDate()}</div>
+                    ${info}
+                </div>
+            `;
+
+            currentDate.setDate(currentDate.getDate() + 1);
+        }
+    }
+
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function openRevenueModal(dateStr) {
+    const modal = document.getElementById('revenueModal');
+    const title = document.getElementById('revenueModalTitle');
+    const date = new Date(dateStr);
+
+    title.textContent = `Umsatz - ${date.toLocaleDateString('de-DE')}`;
+
+    const entry = revenueEntries.find(r => r.date === dateStr);
+
+    document.getElementById('revenueAmount').value = entry?.amount || '';
+    document.getElementById('revenueNotes').value = entry?.notes || '';
+
+    modal.dataset.date = dateStr;
+    modal.dataset.id = entry?.id || '';
+
+    modal.classList.add('show');
+}
+
+function closeRevenueModal() {
+    document.getElementById('revenueModal').classList.remove('show');
+}
+
+async function saveRevenue() {
+    const modal = document.getElementById('revenueModal');
+    const date = modal.dataset.date;
+    const data = {
+        date: date,
+        amount: parseFloat(document.getElementById('revenueAmount').value) || 0,
+        notes: document.getElementById('revenueNotes').value || null
+    };
+
+    try {
+        await apiCall('/revenue', {
+            method: 'POST',
+            body: JSON.stringify(data)
+        });
+        closeRevenueModal();
+        loadRevenueCalendar();
+    } catch (error) {
+        console.error('Error saving revenue:', error);
+        alert('Fehler beim Speichern des Umsatzes: ' + error.message);
+    }
+}
+
+document.getElementById('revenueModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeRevenueModal();
+    }
+});
 
