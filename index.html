@@ -647,6 +647,35 @@
                         <button class="btn btn-primary" onclick="loadRevenueCalendar()">Anzeigen</button>
                     </div>
                     <div id="revenueCalendarContainer"></div>
+
+                    <h3 style="margin-top:30px;">Provisionseinstellungen</h3>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Prozentsatz (%):</label>
+                            <input type="number" id="commissionPercentage" step="0.01" min="0">
+                        </div>
+                        <div class="form-group">
+                            <label>Monatliches Maximum (&#8364;):</label>
+                            <input type="number" id="commissionMonthlyMax" step="0.01" min="0">
+                        </div>
+                        <button class="btn btn-primary" onclick="saveCommissionSettings()">Speichern</button>
+                    </div>
+
+                    <h3>Provisions-Schwellen</h3>
+                    <table class="employee-table" id="thresholdTable">
+                        <thead>
+                            <tr>
+                                <th>Wochentag (0=Mo)</th>
+                                <th>Mitarbeiter</th>
+                                <th>Schwelle (&#8364;)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="thresholdTableBody"></tbody>
+                    </table>
+                    <div style="margin-top:10px;">
+                        <button class="btn btn-secondary" onclick="addThresholdRow()">Zeile hinzufügen</button>
+                        <button class="btn btn-primary" onclick="saveThresholds()">Speichern</button>
+                    </div>
                 </div>
             </div>
         </div>

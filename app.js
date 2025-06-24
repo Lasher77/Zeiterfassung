@@ -25,6 +25,9 @@ document.addEventListener('DOMContentLoaded', async function() {
     await loadEmployees();
     loadDashboard();
 
+    await loadCommissionSettings();
+    await loadCommissionThresholds();
+
     // Set dropdowns to current month and year
     document.getElementById('monthSelect').value = String(currentMonth);
     document.getElementById('yearSelect').value = String(currentYear);
@@ -621,4 +624,83 @@ document.getElementById('revenueModal').addEventListener('click', function(e) {
         closeRevenueModal();
     }
 });
+
+// -------------------- Provisionseinstellungen --------------------
+
+async function loadCommissionSettings() {
+    try {
+        const data = await apiCall('/commission-settings');
+        document.getElementById('commissionPercentage').value = data.percentage ?? '';
+        document.getElementById('commissionMonthlyMax').value = data.monthly_max ?? '';
+    } catch (error) {
+        console.error('Error loading commission settings:', error);
+    }
+}
+
+async function saveCommissionSettings() {
+    const data = {
+        percentage: parseFloat(document.getElementById('commissionPercentage').value) || 0,
+        monthly_max: parseFloat(document.getElementById('commissionMonthlyMax').value) || 0
+    };
+    try {
+        await apiCall('/commission-settings', { method: 'POST', body: JSON.stringify(data) });
+        alert('Gespeichert');
+    } catch (error) {
+        console.error('Error saving commission settings:', error);
+        alert('Fehler beim Speichern der Einstellungen: ' + error.message);
+    }
+}
+
+async function loadCommissionThresholds() {
+    try {
+        const data = await apiCall('/commission-thresholds');
+        renderThresholdTable(data);
+    } catch (error) {
+        console.error('Error loading thresholds:', error);
+    }
+}
+
+function renderThresholdTable(data) {
+    const tbody = document.getElementById('thresholdTableBody');
+    tbody.innerHTML = '';
+    data.forEach(th => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><input type="number" class="th-weekday" value="${th.weekday}"></td>
+            <td><input type="number" class="th-count" value="${th.employee_count}"></td>
+            <td><input type="number" class="th-value" step="0.01" value="${th.threshold}"></td>`;
+        tbody.appendChild(tr);
+    });
+}
+
+function addThresholdRow() {
+    const tbody = document.getElementById('thresholdTableBody');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+        <td><input type="number" class="th-weekday"></td>
+        <td><input type="number" class="th-count"></td>
+        <td><input type="number" class="th-value" step="0.01"></td>`;
+    tbody.appendChild(tr);
+}
+
+async function saveThresholds() {
+    const rows = document.querySelectorAll('#thresholdTableBody tr');
+    try {
+        for (const row of rows) {
+            const weekday = parseInt(row.querySelector('.th-weekday').value);
+            const employee_count = parseInt(row.querySelector('.th-count').value);
+            const threshold = parseFloat(row.querySelector('.th-value').value) || 0;
+            if (isNaN(weekday) || isNaN(employee_count)) continue;
+            await apiCall('/commission-thresholds', {
+                method: 'POST',
+                body: JSON.stringify({ weekday, employee_count, threshold })
+            });
+        }
+        alert('Gespeichert');
+        loadCommissionThresholds();
+    } catch (error) {
+        console.error('Error saving thresholds:', error);
+        alert('Fehler beim Speichern der Schwellen: ' + error.message);
+    }
+}
 
