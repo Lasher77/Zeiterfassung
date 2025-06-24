@@ -8,6 +8,12 @@ let currentYear = 2025;
 let timeEntries = [];
 let employees = [];
 
+// Format date as YYYY-MM-DD in local time
+function formatDate(date) {
+    const tzOffset = date.getTimezoneOffset() * 60000;
+    return new Date(date.getTime() - tzOffset).toISOString().split('T')[0];
+}
+
 // Initialize app
 document.addEventListener('DOMContentLoaded', async function() {
     console.log('App initializing...');
@@ -175,7 +181,7 @@ function renderCalendar() {
     for (let week = 0; week < 6; week++) {
         for (let day = 0; day < 7; day++) {
             const isCurrentMonth = currentDate.getMonth() === currentMonth;
-            const dateStr = currentDate.toISOString().split('T')[0];
+            const dateStr = formatDate(currentDate);
             const entry = timeEntries.find(e => e.date === dateStr);
             
             let dayClass = 'calendar-day';
@@ -429,7 +435,7 @@ function openEmployeeModal(emp = null) {
     document.getElementById('empName').value = emp?.name || '';
     document.getElementById('empHours').value = emp?.contract_hours || '';
     document.getElementById('empCommission').checked = emp?.has_commission || false;
-    document.getElementById('empStart').value = emp?.start_date || new Date().toISOString().split('T')[0];
+    document.getElementById('empStart').value = emp?.start_date || formatDate(new Date());
     document.getElementById('empEnd').value = emp?.end_date || '';
     document.getElementById('empActive').checked = emp ? emp.is_active : true;
 }
