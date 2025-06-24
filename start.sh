@@ -18,8 +18,8 @@ fi
 echo "Python3 gefunden. Starte Server..."
 echo
 
-# Installiere Flask falls nicht vorhanden
-pip3 install flask flask-cors > /dev/null 2>&1
+# Installiere Abh\xE4ngigkeiten falls nicht vorhanden
+pip3 install -r requirements.txt > /dev/null 2>&1
 
 # Port setzen (übernimmt vorhandene PORT-Variable oder nutzt 5001)
 PORT=${PORT:-5001}

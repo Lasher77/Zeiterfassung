@@ -47,7 +47,7 @@ Diese professionelle Arbeitszeiterfassung nutzt eine **SQLite-Datenbank** für s
 cd pfad/zum/zeiterfassung-ordner
 
 # Abhängigkeiten installieren (einmalig)
-pip install flask flask-cors
+pip install -r requirements.txt
 
 # Server starten
 python server.py
