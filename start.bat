@@ -20,15 +20,18 @@ echo.
 REM Installiere Flask falls nicht vorhanden
 pip install flask flask-cors >nul 2>&1
 
+REM Port setzen (vorhandene PORT-Variable verwenden oder 5001)
+if not defined PORT set PORT=5001
+
 REM Starte den Server
-echo Server startet auf http://localhost:5000
+echo Server startet auf http://localhost:%PORT%
 echo.
 echo WICHTIG: Lassen Sie dieses Fenster offen!
 echo Zum Beenden druecken Sie Strg+C
 echo.
 echo Oeffne automatisch den Browser...
 timeout /t 2 >nul
-start http://localhost:5000
+start http://localhost:%PORT%
 
 python server.py
 
