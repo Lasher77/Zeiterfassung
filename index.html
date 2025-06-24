@@ -617,7 +617,36 @@
 
                 <div id="revenue" class="section">
                     <h2>Umsätze</h2>
-                    <p>Hier werden Umsätze erfasst.</p>
+                    <div class="controls">
+                        <div class="control-group">
+                            <label>Monat:</label>
+                            <select id="revMonthSelect">
+                                <option value="0">Januar</option>
+                                <option value="1">Februar</option>
+                                <option value="2">März</option>
+                                <option value="3">April</option>
+                                <option value="4">Mai</option>
+                                <option value="5" selected>Juni</option>
+                                <option value="6">Juli</option>
+                                <option value="7">August</option>
+                                <option value="8">September</option>
+                                <option value="9">Oktober</option>
+                                <option value="10">November</option>
+                                <option value="11">Dezember</option>
+                            </select>
+                        </div>
+                        <div class="control-group">
+                            <label>Jahr:</label>
+                            <select id="revYearSelect">
+                                <option value="2023">2023</option>
+                                <option value="2024">2024</option>
+                                <option value="2025" selected>2025</option>
+                                <option value="2026">2026</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary" onclick="loadRevenueCalendar()">Anzeigen</button>
+                    </div>
+                    <div id="revenueCalendarContainer"></div>
                 </div>
             </div>
         </div>
@@ -687,6 +716,30 @@
             <div class="modal-actions">
                 <button class="btn btn-secondary" onclick="closeModal()">Abbrechen</button>
                 <button class="btn btn-primary" onclick="saveEntry()">Speichern</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal für Umsatz -->
+    <div id="revenueModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="revenueModalTitle">Umsatz</h3>
+                <button class="close-btn" onclick="closeRevenueModal()">&times;</button>
+            </div>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Umsatz (€):</label>
+                    <input type="number" id="revenueAmount" step="0.01" min="0">
+                </div>
+                <div class="form-group" style="grid-column: 1 / -1;">
+                    <label>Notizen:</label>
+                    <textarea id="revenueNotes"></textarea>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeRevenueModal()">Abbrechen</button>
+                <button class="btn btn-primary" onclick="saveRevenue()">Speichern</button>
             </div>
         </div>
     </div>

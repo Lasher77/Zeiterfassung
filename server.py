@@ -363,19 +363,34 @@ def get_revenue():
 
 @app.route('/api/revenue', methods=['POST'])
 def create_revenue():
-    """Neuen Umsatz erstellen"""
+    """Umsatz für ein Datum erstellen oder aktualisieren"""
     data = request.json
-    
+
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        'INSERT INTO revenue (date, amount, notes) VALUES (?, ?, ?)',
-        (data['date'], data['amount'], data.get('notes', ''))
-    )
-    revenue_id = cursor.lastrowid
+
+    # Prüfen, ob für das Datum bereits ein Umsatz existiert
+    existing = cursor.execute(
+        'SELECT id FROM revenue WHERE date = ?',
+        (data['date'],)
+    ).fetchone()
+
+    if existing:
+        cursor.execute(
+            'UPDATE revenue SET amount = ?, notes = ? WHERE id = ?',
+            (data['amount'], data.get('notes', ''), existing['id'])
+        )
+        revenue_id = existing['id']
+    else:
+        cursor.execute(
+            'INSERT INTO revenue (date, amount, notes) VALUES (?, ?, ?)',
+            (data['date'], data['amount'], data.get('notes', ''))
+        )
+        revenue_id = cursor.lastrowid
+
     conn.commit()
     conn.close()
-    
+
     return jsonify({'id': revenue_id, 'message': 'Umsatz gespeichert'})
 
 @app.route('/api/reports/monthly/<int:employee_id>/<int:year>/<int:month>')
