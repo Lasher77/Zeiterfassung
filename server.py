@@ -102,7 +102,7 @@ def health_check():
 def get_employees():
     """Alle Mitarbeiter abrufen"""
     conn = get_db_connection()
-    employees = conn.execute('SELECT * FROM employees WHERE is_active = 1 ORDER BY name').fetchall()
+    employees = conn.execute('SELECT * FROM employees ORDER BY name').fetchall()
     conn.close()
     
     return jsonify([dict(row) for row in employees])
