@@ -17,8 +17,8 @@ if %errorlevel% neq 0 (
 echo Python gefunden. Starte Server...
 echo.
 
-REM Installiere Flask falls nicht vorhanden
-pip install flask flask-cors >nul 2>&1
+REM Installiere Abh\xE4ngigkeiten falls nicht vorhanden
+pip install -r requirements.txt >nul 2>&1
 
 REM Port setzen (vorhandene PORT-Variable verwenden oder 5001)
 if not defined PORT set PORT=5001
