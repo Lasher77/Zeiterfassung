@@ -72,6 +72,29 @@ def init_database():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+
+    # Provisionseinstellungen
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS commission_settings (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            percentage REAL NOT NULL DEFAULT 0,
+            monthly_max REAL NOT NULL DEFAULT 0
+        )
+    ''')
+    cursor.execute('SELECT COUNT(*) FROM commission_settings')
+    if cursor.fetchone()[0] == 0:
+        cursor.execute('INSERT INTO commission_settings (id, percentage, monthly_max) VALUES (1, 0, 0)')
+
+    # Provisionsschwellen
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS commission_thresholds (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            weekday INTEGER NOT NULL,
+            employee_count INTEGER NOT NULL,
+            threshold REAL NOT NULL,
+            UNIQUE (weekday, employee_count)
+        )
+    ''')
     
     # Beispieldaten einfügen falls Tabelle leer
     cursor.execute('SELECT COUNT(*) FROM employees')
@@ -392,6 +415,53 @@ def create_revenue():
     conn.close()
 
     return jsonify({'id': revenue_id, 'message': 'Umsatz gespeichert'})
+
+
+@app.route('/api/commission-settings', methods=['GET', 'POST'])
+def commission_settings():
+    """Provisionseinstellungen lesen oder speichern"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    if request.method == 'GET':
+        row = cursor.execute('SELECT percentage, monthly_max FROM commission_settings WHERE id = 1').fetchone()
+        conn.close()
+        if row:
+            return jsonify({'percentage': row['percentage'], 'monthly_max': row['monthly_max']})
+        return jsonify({'percentage': 0, 'monthly_max': 0})
+
+    data = request.json
+    cursor.execute('''
+        INSERT INTO commission_settings (id, percentage, monthly_max)
+        VALUES (1, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            percentage = excluded.percentage,
+            monthly_max = excluded.monthly_max
+    ''', (data.get('percentage', 0), data.get('monthly_max', 0)))
+    conn.commit()
+    conn.close()
+    return jsonify({'message': 'Einstellungen gespeichert'})
+
+
+@app.route('/api/commission-thresholds', methods=['GET', 'POST'])
+def commission_thresholds():
+    """Provisionsschwellen abrufen oder speichern"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    if request.method == 'GET':
+        rows = cursor.execute('SELECT weekday, employee_count, threshold FROM commission_thresholds ORDER BY weekday, employee_count').fetchall()
+        conn.close()
+        return jsonify([dict(row) for row in rows])
+
+    data = request.json
+    cursor.execute('''
+        INSERT INTO commission_thresholds (weekday, employee_count, threshold)
+        VALUES (?, ?, ?)
+        ON CONFLICT(weekday, employee_count) DO UPDATE SET
+            threshold = excluded.threshold
+    ''', (data['weekday'], data['employee_count'], data.get('threshold', 0)))
+    conn.commit()
+    conn.close()
+    return jsonify({'message': 'Schwelle gespeichert'})
 
 @app.route('/api/reports/monthly/<int:employee_id>/<int:year>/<int:month>')
 def monthly_report(employee_id, year, month):
