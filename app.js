@@ -410,14 +410,25 @@ function renderEmployeeList() {
             <td>${emp.name}</td>
             <td>${emp.has_commission ? 'Ja' : 'Nein'}</td>
             <td>${emp.is_active ? 'Nein' : 'Ja'}</td>
-            <td>${new Date(emp.created_at).toLocaleDateString('de-DE')}</td>
+            <td>${emp.start_date ? new Date(emp.start_date).toLocaleDateString('de-DE') : ''}</td>
+            <td>${emp.end_date ? new Date(emp.end_date).toLocaleDateString('de-DE') : ''}</td>
         `;
+        tr.onclick = () => openEmployeeModal(emp);
         tbody.appendChild(tr);
     });
 }
 
-function openEmployeeModal() {
-    document.getElementById('employeeModal').classList.add('show');
+function openEmployeeModal(emp = null) {
+    const modal = document.getElementById('employeeModal');
+    modal.classList.add('show');
+    modal.dataset.id = emp ? emp.id : '';
+    document.getElementById('employeeModalTitle').textContent = emp ? 'Mitarbeiter bearbeiten' : 'Neuer Mitarbeiter';
+    document.getElementById('empName').value = emp?.name || '';
+    document.getElementById('empHours').value = emp?.contract_hours || '';
+    document.getElementById('empCommission').checked = emp?.has_commission || false;
+    document.getElementById('empStart').value = emp?.start_date || new Date().toISOString().split('T')[0];
+    document.getElementById('empEnd').value = emp?.end_date || '';
+    document.getElementById('empActive').checked = emp ? emp.is_active : true;
 }
 
 function closeEmployeeModal() {
@@ -425,6 +436,10 @@ function closeEmployeeModal() {
     document.getElementById('empName').value = '';
     document.getElementById('empHours').value = '';
     document.getElementById('empCommission').checked = false;
+    document.getElementById('empStart').value = '';
+    document.getElementById('empEnd').value = '';
+    document.getElementById('empActive').checked = true;
+    document.getElementById('employeeModal').dataset.id = '';
 }
 
 async function saveEmployee() {
@@ -437,15 +452,32 @@ async function saveEmployee() {
         return;
     }
 
+    const startDate = document.getElementById('empStart').value;
+    const endDate = document.getElementById('empEnd').value || null;
+    const active = document.getElementById('empActive').checked;
+
+    const payload = {
+        name: name,
+        contract_hours: hours,
+        has_commission: commission,
+        start_date: startDate,
+        end_date: endDate,
+        is_active: active
+    };
+
     try {
-        await apiCall('/employees', {
-            method: 'POST',
-            body: JSON.stringify({
-                name: name,
-                contract_hours: hours,
-                has_commission: commission
-            })
-        });
+        const modal = document.getElementById('employeeModal');
+        if (modal.dataset.id) {
+            await apiCall(`/employees/${modal.dataset.id}`, {
+                method: 'PUT',
+                body: JSON.stringify(payload)
+            });
+        } else {
+            await apiCall('/employees', {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            });
+        }
         closeEmployeeModal();
         await loadEmployees();
     } catch (error) {

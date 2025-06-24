@@ -97,12 +97,14 @@ zeiterfassung-sqlite/
 - **Duftreisen:** Bis 18h / Ab 18h (mehrfach möglich)
 - **Provision:** Wird angezeigt (später automatisch berechnet)
 - **Notizen:** Zusätzliche Informationen
+- **Beschäftigungszeitraum:** Start- und Enddatum des Mitarbeiters erfassen
 
 ### **4. Besonderheiten**
 - **Samstag ist Arbeitstag** (Einzelhandel)
 - **Duftreisen unabhängig** von Arbeitszeit
 - **Urlaub/Krank** macht andere Einträge irrelevant
 - **Automatische Speicherung** in SQLite-Datenbank
+- **Beschäftigungszeitraum** eintragbar (Start- und Enddatum)
 
 ## 🔧 **Erweiterte Funktionen**
 
