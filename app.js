@@ -3,13 +3,15 @@ const API_BASE_URL = 'http://localhost:5001/api';
 
 // Global variables
 let currentEmployee = null;
-let currentMonth = 5; // Juni (0-based)
-let currentYear = 2025;
+// Use today's date as initial selection
+const today = new Date();
+let currentMonth = today.getMonth();
+let currentYear = today.getFullYear();
 let timeEntries = [];
 let employees = [];
 let revenueEntries = [];
-let currentRevenueMonth = 5;
-let currentRevenueYear = 2025;
+let currentRevenueMonth = currentMonth;
+let currentRevenueYear = currentYear;
 
 // Format date as YYYY-MM-DD in local time
 function formatDate(date) {
@@ -22,6 +24,12 @@ document.addEventListener('DOMContentLoaded', async function() {
     console.log('App initializing...');
     await loadEmployees();
     loadDashboard();
+
+    // Set dropdowns to current month and year
+    document.getElementById('monthSelect').value = String(currentMonth);
+    document.getElementById('yearSelect').value = String(currentYear);
+    document.getElementById('revMonthSelect').value = String(currentMonth);
+    document.getElementById('revYearSelect').value = String(currentYear);
 });
 
 // API Functions
