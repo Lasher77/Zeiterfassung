@@ -158,3 +158,6 @@ Die Anwendung ist bereit für:
 
 **Die Arbeitszeiterfassung ist jetzt professionell und sicher mit SQLite-Datenbank!** 🎉
 
+
+## Lizenz
+Die Anwendung steht unter der MIT-Lizenz. Siehe [LICENSE](LICENSE) für weitere Informationen.
