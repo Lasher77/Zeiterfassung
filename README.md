@@ -105,6 +105,8 @@ zeiterfassung-sqlite/
 - **Urlaub/Krank** macht andere Einträge irrelevant
 - **Automatische Speicherung** in SQLite-Datenbank
 - **Beschäftigungszeitraum** eintragbar (Start- und Enddatum)
+- **Hinweis bei falschem Datum**: Zeitbuchungen außerhalb dieses Zeitraums
+  zeigen eine verständliche Meldung an
 
 ## 🔧 **Erweiterte Funktionen**
 
