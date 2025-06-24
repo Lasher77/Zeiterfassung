@@ -55,6 +55,8 @@ async function loadEmployees() {
                 select.appendChild(option);
             }
         });
+
+        renderEmployeeList();
     } catch (error) {
         console.error('Error loading employees:', error);
         showError('Fehler beim Laden der Mitarbeiter: ' + error.message);
@@ -389,4 +391,66 @@ document.getElementById('timeModal').addEventListener('click', function(e) {
         closeModal();
     }
 });
+
+// Close employee modal when clicking outside
+document.getElementById('employeeModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeEmployeeModal();
+    }
+});
+
+// Render employee table
+function renderEmployeeList() {
+    const tbody = document.getElementById('employeeTableBody');
+    tbody.innerHTML = '';
+
+    employees.forEach(emp => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${emp.name}</td>
+            <td>${emp.has_commission ? 'Ja' : 'Nein'}</td>
+            <td>${emp.is_active ? 'Nein' : 'Ja'}</td>
+            <td>${new Date(emp.created_at).toLocaleDateString('de-DE')}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function openEmployeeModal() {
+    document.getElementById('employeeModal').classList.add('show');
+}
+
+function closeEmployeeModal() {
+    document.getElementById('employeeModal').classList.remove('show');
+    document.getElementById('empName').value = '';
+    document.getElementById('empHours').value = '';
+    document.getElementById('empCommission').checked = false;
+}
+
+async function saveEmployee() {
+    const name = document.getElementById('empName').value.trim();
+    const hours = parseInt(document.getElementById('empHours').value) || 0;
+    const commission = document.getElementById('empCommission').checked;
+
+    if (!name || hours <= 0) {
+        alert('Bitte Name und Vertragsstunden angeben.');
+        return;
+    }
+
+    try {
+        await apiCall('/employees', {
+            method: 'POST',
+            body: JSON.stringify({
+                name: name,
+                contract_hours: hours,
+                has_commission: commission
+            })
+        });
+        closeEmployeeModal();
+        await loadEmployees();
+    } catch (error) {
+        console.error('Error saving employee:', error);
+        alert('Fehler beim Speichern des Mitarbeiters: ' + error.message);
+    }
+}
 
