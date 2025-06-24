@@ -603,6 +603,7 @@
                                 <th>Provision</th>
                                 <th>Ausgeschieden</th>
                                 <th>Beginn</th>
+                                <th>Ende</th>
                             </tr>
                         </thead>
                         <tbody id="employeeTableBody"></tbody>
@@ -694,7 +695,7 @@
     <div id="employeeModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3 class="modal-title">Neuer Mitarbeiter</h3>
+                <h3 class="modal-title" id="employeeModalTitle">Neuer Mitarbeiter</h3>
                 <button class="close-btn" onclick="closeEmployeeModal()">&times;</button>
             </div>
             <div class="form-grid">
@@ -708,6 +709,17 @@
                 </div>
                 <div class="form-group">
                     <label><input type="checkbox" id="empCommission"> Berechtigt für Provision</label>
+                </div>
+                <div class="form-group">
+                    <label>Startdatum:</label>
+                    <input type="date" id="empStart">
+                </div>
+                <div class="form-group">
+                    <label>Enddatum:</label>
+                    <input type="date" id="empEnd">
+                </div>
+                <div class="form-group">
+                    <label><input type="checkbox" id="empActive" checked> Aktiv</label>
                 </div>
             </div>
             <div class="modal-actions">

@@ -29,9 +29,19 @@ def init_database():
             contract_hours INTEGER NOT NULL,
             has_commission BOOLEAN NOT NULL DEFAULT 0,
             is_active BOOLEAN NOT NULL DEFAULT 1,
+            start_date DATE NOT NULL,
+            end_date DATE,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+
+    # Bestehende Tabellen um fehlende Spalten erweitern
+    cursor.execute('PRAGMA table_info(employees)')
+    cols = [row[1] for row in cursor.fetchall()]
+    if 'start_date' not in cols:
+        cursor.execute('ALTER TABLE employees ADD COLUMN start_date DATE')
+    if 'end_date' not in cols:
+        cursor.execute('ALTER TABLE employees ADD COLUMN end_date DATE')
     
     # Zeiterfassung-Tabelle
     cursor.execute('''
@@ -66,18 +76,19 @@ def init_database():
     # Beispieldaten einfügen falls Tabelle leer
     cursor.execute('SELECT COUNT(*) FROM employees')
     if cursor.fetchone()[0] == 0:
+        today = date.today().isoformat()
         employees = [
-            ("Alina W.", 20, 0, 1),
-            ("Valeria Z.", 25, 1, 1),
-            ("Eva C.", 30, 1, 1),
-            ("Hannah S.", 20, 0, 1),
-            ("Hans K.", 40, 1, 1),
-            ("Lena K.", 25, 1, 1),
-            ("Lorena M.", 30, 1, 1),
-            ("Lilo Ming K.", 20, 0, 1)
+            ("Alina W.", 20, 0, 1, today),
+            ("Valeria Z.", 25, 1, 1, today),
+            ("Eva C.", 30, 1, 1, today),
+            ("Hannah S.", 20, 0, 1, today),
+            ("Hans K.", 40, 1, 1, today),
+            ("Lena K.", 25, 1, 1, today),
+            ("Lorena M.", 30, 1, 1, today),
+            ("Lilo Ming K.", 20, 0, 1, today)
         ]
         cursor.executemany(
-            'INSERT INTO employees (name, contract_hours, has_commission, is_active) VALUES (?, ?, ?, ?)',
+            'INSERT INTO employees (name, contract_hours, has_commission, is_active, start_date) VALUES (?, ?, ?, ?, ?)',
             employees
         )
     
@@ -114,9 +125,17 @@ def create_employee():
     
     conn = get_db_connection()
     cursor = conn.cursor()
+
+
     cursor.execute(
-        'INSERT INTO employees (name, contract_hours, has_commission) VALUES (?, ?, ?)',
-        (data['name'], data['contract_hours'], data.get('has_commission', False))
+        'INSERT INTO employees (name, contract_hours, has_commission, start_date, end_date) VALUES (?, ?, ?, ?, ?)',
+        (
+            data['name'],
+            data['contract_hours'],
+            data.get('has_commission', False),
+            data.get('start_date', date.today().isoformat()),
+            data.get('end_date')
+        )
     )
     employee_id = cursor.lastrowid
     conn.commit()
@@ -131,9 +150,16 @@ def update_employee(employee_id):
     
     conn = get_db_connection()
     conn.execute(
-        'UPDATE employees SET name = ?, contract_hours = ?, has_commission = ?, is_active = ? WHERE id = ?',
-        (data['name'], data['contract_hours'], data.get('has_commission', False), 
-         data.get('is_active', True), employee_id)
+        'UPDATE employees SET name = ?, contract_hours = ?, has_commission = ?, is_active = ?, start_date = ?, end_date = ? WHERE id = ?',
+        (
+            data['name'],
+            data['contract_hours'],
+            data.get('has_commission', False),
+            data.get('is_active', True),
+            data.get('start_date'),
+            data.get('end_date'),
+            employee_id,
+        )
     )
     conn.commit()
     conn.close()
@@ -176,9 +202,25 @@ def get_time_entries():
 def create_time_entry():
     """Neue Zeiterfassung erstellen"""
     data = request.json
-    
+
     conn = get_db_connection()
     cursor = conn.cursor()
+
+    employee = cursor.execute(
+        'SELECT start_date, end_date FROM employees WHERE id = ?',
+        (data['employee_id'],)
+    ).fetchone()
+    if not employee:
+        conn.close()
+        return jsonify({'error': 'Mitarbeiter nicht gefunden'}), 404
+
+    entry_date = datetime.strptime(data['date'], '%Y-%m-%d').date()
+    if employee['start_date'] and entry_date < datetime.strptime(employee['start_date'], '%Y-%m-%d').date():
+        conn.close()
+        return jsonify({'error': 'Datum liegt vor Arbeitsbeginn'}), 400
+    if employee['end_date'] and entry_date > datetime.strptime(employee['end_date'], '%Y-%m-%d').date():
+        conn.close()
+        return jsonify({'error': 'Datum liegt nach Austrittsdatum'}), 400
     
     # Prüfe ob bereits Eintrag für diesen Tag existiert
     existing = cursor.execute(
@@ -240,11 +282,23 @@ def update_time_entry(entry_id):
     cursor = conn.cursor()
     
     # Prüfe ob Eintrag existiert
-    existing = cursor.execute('SELECT id FROM time_entries WHERE id = ?', (entry_id,)).fetchone()
+    existing = cursor.execute('SELECT * FROM time_entries WHERE id = ?', (entry_id,)).fetchone()
     
     if not existing:
         conn.close()
         return jsonify({'error': 'Zeiterfassung nicht gefunden'}), 404
+
+    employee = cursor.execute(
+        'SELECT start_date, end_date FROM employees WHERE id = ?',
+        (existing['employee_id'],)
+    ).fetchone()
+    entry_date = datetime.strptime(data.get('date', existing['date']), '%Y-%m-%d').date()
+    if employee['start_date'] and entry_date < datetime.strptime(employee['start_date'], '%Y-%m-%d').date():
+        conn.close()
+        return jsonify({'error': 'Datum liegt vor Arbeitsbeginn'}), 400
+    if employee['end_date'] and entry_date > datetime.strptime(employee['end_date'], '%Y-%m-%d').date():
+        conn.close()
+        return jsonify({'error': 'Datum liegt nach Austrittsdatum'}), 400
     
     # Update Eintrag
     cursor.execute('''
