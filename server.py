@@ -215,12 +215,20 @@ def create_time_entry():
         return jsonify({'error': 'Mitarbeiter nicht gefunden'}), 404
 
     entry_date = datetime.strptime(data['date'], '%Y-%m-%d').date()
-    if employee['start_date'] and entry_date < datetime.strptime(employee['start_date'], '%Y-%m-%d').date():
+
+    # Beschäftigungszeitraum prüfen
+    start = datetime.strptime(employee['start_date'], '%Y-%m-%d').date() if employee['start_date'] else None
+    end = datetime.strptime(employee['end_date'], '%Y-%m-%d').date() if employee['end_date'] else None
+
+    if (start and entry_date < start) or (end and entry_date > end):
         conn.close()
-        return jsonify({'error': 'Datum liegt vor Arbeitsbeginn'}), 400
-    if employee['end_date'] and entry_date > datetime.strptime(employee['end_date'], '%Y-%m-%d').date():
-        conn.close()
-        return jsonify({'error': 'Datum liegt nach Austrittsdatum'}), 400
+        if start and end:
+            period = f"{start.isoformat()} bis {end.isoformat()}"
+        elif start:
+            period = f"ab {start.isoformat()}"
+        else:
+            period = f"bis {end.isoformat()}"
+        return jsonify({'error': f'Datum außerhalb des Beschäftigungszeitraums ({period})'}), 400
     
     # Prüfe ob bereits Eintrag für diesen Tag existiert
     existing = cursor.execute(
@@ -293,12 +301,20 @@ def update_time_entry(entry_id):
         (existing['employee_id'],)
     ).fetchone()
     entry_date = datetime.strptime(data.get('date', existing['date']), '%Y-%m-%d').date()
-    if employee['start_date'] and entry_date < datetime.strptime(employee['start_date'], '%Y-%m-%d').date():
+
+    # Beschäftigungszeitraum prüfen
+    start = datetime.strptime(employee['start_date'], '%Y-%m-%d').date() if employee['start_date'] else None
+    end = datetime.strptime(employee['end_date'], '%Y-%m-%d').date() if employee['end_date'] else None
+
+    if (start and entry_date < start) or (end and entry_date > end):
         conn.close()
-        return jsonify({'error': 'Datum liegt vor Arbeitsbeginn'}), 400
-    if employee['end_date'] and entry_date > datetime.strptime(employee['end_date'], '%Y-%m-%d').date():
-        conn.close()
-        return jsonify({'error': 'Datum liegt nach Austrittsdatum'}), 400
+        if start and end:
+            period = f"{start.isoformat()} bis {end.isoformat()}"
+        elif start:
+            period = f"ab {start.isoformat()}"
+        else:
+            period = f"bis {end.isoformat()}"
+        return jsonify({'error': f'Datum außerhalb des Beschäftigungszeitraums ({period})'}), 400
     
     # Update Eintrag
     cursor.execute('''

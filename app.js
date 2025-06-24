@@ -25,12 +25,15 @@ async function apiCall(endpoint, options = {}) {
             },
             ...options
         });
-        
+
+        const data = await response.json().catch(() => ({}));
+
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            const message = data.error || data.message || `HTTP error! status: ${response.status}`;
+            throw new Error(message);
         }
-        
-        return await response.json();
+
+        return data;
     } catch (error) {
         console.error('API call failed:', error);
         throw error;
@@ -357,7 +360,7 @@ async function saveEntry() {
         loadCalendar(); // Reload calendar
     } catch (error) {
         console.error('Error saving entry:', error);
-        alert('Fehler beim Speichern: ' + error.message);
+        alert(error.message);
     }
 }
 
