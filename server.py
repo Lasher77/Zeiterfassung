@@ -125,6 +125,110 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row  # Ermöglicht dict-ähnlichen Zugriff
     return conn
 
+def compute_commission_for_date(date_str):
+    """Berechne Provisionen für einen bestimmten Tag"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Umsatz des Tages
+    rev = cursor.execute(
+        'SELECT amount FROM revenue WHERE date = ?',
+        (date_str,)
+    ).fetchone()
+    revenue = rev['amount'] if rev else 0
+
+    # Globale Provisionseinstellungen
+    settings = cursor.execute(
+        'SELECT percentage, monthly_max FROM commission_settings WHERE id = 1'
+    ).fetchone()
+    percentage = settings['percentage'] if settings else 0
+    monthly_max = settings['monthly_max'] if settings else 0
+
+    # Mitarbeiter, die an diesem Tag gearbeitet haben und provisionsberechtigt sind
+    entries = cursor.execute(
+        '''
+            SELECT te.id, te.employee_id, te.start_time, te.end_time,
+                   te.pause_minutes
+            FROM time_entries te
+            JOIN employees e ON te.employee_id = e.id
+            WHERE te.date = ?
+              AND te.entry_type = 'work'
+              AND te.start_time IS NOT NULL AND te.end_time IS NOT NULL
+              AND e.has_commission = 1
+        ''',
+        (date_str,),
+    ).fetchall()
+
+    emp_hours = {}
+    entry_ids = {}
+    for row in entries:
+        start = datetime.strptime(row['start_time'], '%H:%M')
+        end = datetime.strptime(row['end_time'], '%H:%M')
+        hours = (end - start).seconds / 3600 - (row['pause_minutes'] or 0) / 60
+        emp_hours.setdefault(row['employee_id'], 0)
+        emp_hours[row['employee_id']] += hours
+        entry_ids[row['employee_id']] = row['id']
+
+    employee_count = len(emp_hours)
+
+    weekday = datetime.strptime(date_str, '%Y-%m-%d').weekday()
+    th = cursor.execute(
+        'SELECT threshold FROM commission_thresholds '
+        'WHERE weekday = ? AND employee_count = ?',
+        (weekday, employee_count),
+    ).fetchone()
+    threshold = th['threshold'] if th else 0
+
+    total_hours = sum(emp_hours.values())
+    total_commission = 0
+    if revenue >= threshold and total_hours > 0 and percentage > 0:
+        total_commission = revenue * (percentage / 100.0)
+
+    ids = list(entry_ids.values())
+
+    for emp_id, hours in emp_hours.items():
+        entry_id = entry_ids[emp_id]
+        commission = 0
+        if total_commission > 0:
+            share = hours / total_hours if total_hours else 0
+            raw_commission = total_commission * share
+
+            y, m, _ = date_str.split('-')
+            month_total = cursor.execute(
+                '''
+                    SELECT SUM(commission) AS total FROM time_entries
+                    WHERE employee_id = ?
+                      AND strftime('%Y', date) = ?
+                      AND strftime('%m', date) = ?
+                      AND date != ?
+                ''',
+                (emp_id, y, m, date_str),
+            ).fetchone()
+            month_total = month_total['total'] or 0
+            allowed = max(0, monthly_max - month_total)
+            commission = min(raw_commission, allowed)
+
+        cursor.execute(
+            'UPDATE time_entries SET commission = ? WHERE id = ?',
+            (round(commission, 2), entry_id),
+        )
+
+    # Alle anderen Einträge des Tages auf 0 setzen
+    if ids:
+        placeholders = ','.join('?' for _ in ids)
+        cursor.execute(
+            f'UPDATE time_entries SET commission = 0 WHERE date = ? '
+            f'AND id NOT IN ({placeholders})',
+            [date_str] + ids,
+        )
+    else:
+        cursor.execute(
+            'UPDATE time_entries SET commission = 0 WHERE date = ?', (date_str,)
+        )
+
+    conn.commit()
+    conn.close()
+
 # API Endpunkte
 
 @app.route('/api/health')
@@ -301,7 +405,10 @@ def create_time_entry():
     
     conn.commit()
     conn.close()
-    
+
+    # Provision neu berechnen
+    compute_commission_for_date(data['date'])
+
     return jsonify({'id': entry_id, 'message': 'Zeiterfassung gespeichert'})
 
 @app.route('/api/time-entries/<int:entry_id>', methods=['PUT'])
@@ -359,7 +466,10 @@ def update_time_entry(entry_id):
     
     conn.commit()
     conn.close()
-    
+
+    # Provision neu berechnen
+    compute_commission_for_date(entry_date.isoformat())
+
     return jsonify({'message': 'Zeiterfassung aktualisiert'})
 
 @app.route('/api/revenue', methods=['GET'])
@@ -413,6 +523,9 @@ def create_revenue():
 
     conn.commit()
     conn.close()
+
+    # Provision für diesen Tag neu berechnen
+    compute_commission_for_date(data['date'])
 
     return jsonify({'id': revenue_id, 'message': 'Umsatz gespeichert'})
 
@@ -473,11 +586,24 @@ def monthly_report(employee_id, year, month):
     
     # Zeiterfassungen des Monats
     entries = conn.execute('''
-        SELECT * FROM time_entries 
+        SELECT * FROM time_entries
         WHERE employee_id = ? AND strftime("%Y", date) = ? AND strftime("%m", date) = ?
         ORDER BY date
     ''', (employee_id, str(year), f"{month:02d}")).fetchall()
-    
+
+    # Provisionen für alle Tage neu berechnen
+    for entry in entries:
+        compute_commission_for_date(entry['date'])
+
+    conn.close()
+
+    # Einträge nach Berechnung erneut laden
+    conn = get_db_connection()
+    entries = conn.execute('''
+        SELECT * FROM time_entries
+        WHERE employee_id = ? AND strftime("%Y", date) = ? AND strftime("%m", date) = ?
+        ORDER BY date
+    ''', (employee_id, str(year), f"{month:02d}")).fetchall()
     conn.close()
     
     if not employee:
