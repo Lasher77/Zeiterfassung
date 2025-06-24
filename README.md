@@ -57,6 +57,11 @@ Port ändern:
 PORT=5002 python server.py
 ```
 
+Debug-Modus aktivieren:
+```bash
+FLASK_DEBUG=1 python server.py
+```
+
 ## 📁 **Dateien im Paket**
 
 ```
