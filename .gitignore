@@ -1,0 +1,9 @@
+zeiterfassung.db
+*.pyc
+__pycache__/
+venv/
+ENV/
+.env/
+*.egg-info/
+env/
+.venv/

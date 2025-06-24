@@ -4,12 +4,15 @@
 
 Diese professionelle Arbeitszeiterfassung nutzt eine **SQLite-Datenbank** für sichere und zuverlässige Datenspeicherung. Die Anwendung läuft lokal auf Ihrem Computer und bietet alle Funktionen der ursprünglichen Excel-Tabelle in einer modernen Web-Oberfläche.
 
+**Hinweis:** Die Datenbankdatei `zeiterfassung.db` wird beim Start des Servers automatisch angelegt und ist deshalb nicht Teil des Git-Repositories.
+
 ## ✅ **Vorteile der SQLite-Version**
 
 - **🔒 Sichere Datenspeicherung** - Keine Datenverluste durch Browser-Cache
 - **📊 Professionelle Datenbank** - Strukturierte, konsistente Daten
 - **🚀 Bessere Performance** - Schnellere Abfragen und Berechnungen
 - **💾 Backup-fähig** - Einfache Sicherung der `zeiterfassung.db` Datei
+- **⚙️ Automatisch generiert** - Die Datei `zeiterfassung.db` wird beim Start des Servers erstellt und sollte nicht per Git versioniert werden
 - **🔄 Mehrbenutzerfähig** - Vorbereitet für Netzwerk-Zugriff
 - **📈 Skalierbar** - Kann später erweitert werden
 
