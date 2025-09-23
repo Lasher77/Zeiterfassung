@@ -246,18 +246,24 @@ function renderMonthSummary() {
     }, 0);
     
     const totalDuftreisen = timeEntries.reduce((sum, entry) => {
-        return sum + (entry.duftreise_bis_18 || 0) + (entry.duftreise_ab_18 || 0);
+        const bis18 = Number(entry.duftreise_bis_18 ?? 0);
+        const ab18 = Number(entry.duftreise_ab_18 ?? 0);
+        return sum + (Number.isFinite(bis18) ? bis18 : 0) + (Number.isFinite(ab18) ? ab18 : 0);
     }, 0);
-    
+
     const totalProvision = timeEntries.reduce((sum, entry) => {
-        return sum + (entry.commission || 0);
+        const commission = Number(entry.commission ?? 0);
+        return sum + (Number.isFinite(commission) ? commission : 0);
     }, 0);
+
+    const safeTotalHours = Number.isFinite(totalHours) ? totalHours : 0;
+    const safeTotalProvision = Number.isFinite(totalProvision) ? totalProvision : 0;
     
     summary.innerHTML = `
         <div class="summary-title">Monatsübersicht ${currentEmployee.name}</div>
         <div class="summary-grid">
             <div class="summary-item">
-                <div class="summary-value">${totalHours.toFixed(1)}</div>
+                <div class="summary-value">${safeTotalHours.toFixed(1)}</div>
                 <div class="summary-label">Gesamtstunden</div>
             </div>
             <div class="summary-item">
@@ -277,7 +283,7 @@ function renderMonthSummary() {
                 <div class="summary-label">Duftreisen gesamt</div>
             </div>
             <div class="summary-item">
-                <div class="summary-value">${totalProvision.toFixed(2)}€</div>
+                <div class="summary-value">${safeTotalProvision.toFixed(2)}€</div>
                 <div class="summary-label">Provision gesamt</div>
             </div>
         </div>
