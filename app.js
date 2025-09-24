@@ -669,12 +669,21 @@ async function loadCommissionThresholds() {
 function renderThresholdTable(data) {
     const tbody = document.getElementById('thresholdTableBody');
     tbody.innerHTML = '';
-    data.forEach(th => {
+    const sorted = [...data].sort((a, b) => {
+        if (a.weekday !== b.weekday) return a.weekday - b.weekday;
+        if (a.employee_count !== b.employee_count) return a.employee_count - b.employee_count;
+        const dateA = (a.valid_from || '1970-01-01');
+        const dateB = (b.valid_from || '1970-01-01');
+        return dateB.localeCompare(dateA);
+    });
+    sorted.forEach(th => {
+        const validFrom = formatDateInput(th.valid_from);
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td><input type="number" class="th-weekday" value="${th.weekday}"></td>
-            <td><input type="number" class="th-count" value="${th.employee_count}"></td>
-            <td><input type="number" class="th-value" step="0.01" value="${th.threshold}"></td>`;
+            <td><input type="number" class="th-weekday" value="${th.weekday ?? ''}"></td>
+            <td><input type="number" class="th-count" value="${th.employee_count ?? ''}"></td>
+            <td><input type="number" class="th-value" step="0.01" value="${th.threshold ?? ''}"></td>
+            <td><input type="date" class="th-valid-from" value="${validFrom}"></td>`;
         tbody.appendChild(tr);
     });
 }
@@ -682,10 +691,12 @@ function renderThresholdTable(data) {
 function addThresholdRow() {
     const tbody = document.getElementById('thresholdTableBody');
     const tr = document.createElement('tr');
+    const today = new Date().toISOString().split('T')[0];
     tr.innerHTML = `
         <td><input type="number" class="th-weekday"></td>
         <td><input type="number" class="th-count"></td>
-        <td><input type="number" class="th-value" step="0.01"></td>`;
+        <td><input type="number" class="th-value" step="0.01"></td>
+        <td><input type="date" class="th-valid-from" value="${today}"></td>`;
     tbody.appendChild(tr);
 }
 
@@ -696,10 +707,12 @@ async function saveThresholds() {
             const weekday = parseInt(row.querySelector('.th-weekday').value);
             const employee_count = parseInt(row.querySelector('.th-count').value);
             const threshold = parseFloat(row.querySelector('.th-value').value) || 0;
+            const valid_from_input = row.querySelector('.th-valid-from')?.value;
+            const valid_from = formatDateInput(valid_from_input);
             if (isNaN(weekday) || isNaN(employee_count)) continue;
             await apiCall('/commission-thresholds', {
                 method: 'POST',
-                body: JSON.stringify({ weekday, employee_count, threshold })
+                body: JSON.stringify({ weekday, employee_count, threshold, valid_from })
             });
         }
         alert('Gespeichert');
@@ -708,5 +721,17 @@ async function saveThresholds() {
         console.error('Error saving thresholds:', error);
         alert('Fehler beim Speichern der Schwellen: ' + error.message);
     }
+}
+
+function formatDateInput(value) {
+    const dateString = (value && value.trim()) || '';
+    if (dateString === '') {
+        return '1970-01-01';
+    }
+    const parsed = new Date(dateString);
+    if (Number.isNaN(parsed.getTime())) {
+        return '1970-01-01';
+    }
+    return parsed.toISOString().split('T')[0];
 }
 
