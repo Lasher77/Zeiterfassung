@@ -86,15 +86,66 @@ def init_database():
         cursor.execute('INSERT INTO commission_settings (id, percentage, monthly_max) VALUES (1, 0, 0)')
 
     # Provisionsschwellen
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS commission_thresholds (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            weekday INTEGER NOT NULL,
-            employee_count INTEGER NOT NULL,
-            threshold REAL NOT NULL,
-            UNIQUE (weekday, employee_count)
-        )
-    ''')
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='commission_thresholds'"
+    )
+    table_exists = cursor.fetchone() is not None
+
+    def create_commission_thresholds_table():
+        cursor.execute('''
+            CREATE TABLE commission_thresholds (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                weekday INTEGER NOT NULL,
+                employee_count INTEGER NOT NULL,
+                threshold REAL NOT NULL,
+                valid_from DATE NOT NULL DEFAULT '1970-01-01',
+                UNIQUE (weekday, employee_count, valid_from)
+            )
+        ''')
+
+    if not table_exists:
+        create_commission_thresholds_table()
+    else:
+        cursor.execute('PRAGMA table_info(commission_thresholds)')
+        columns = [row[1] for row in cursor.fetchall()]
+        needs_migration = 'valid_from' not in columns
+
+        if not needs_migration:
+            cursor.execute('PRAGMA index_list(commission_thresholds)')
+            indexes = cursor.fetchall()
+            has_desired_unique = False
+            for index in indexes:
+                if index[2]:  # unique index
+                    idx_name = index[1]
+                    cursor.execute(f"PRAGMA index_info('{idx_name}')")
+                    idx_columns = [info[2] for info in cursor.fetchall()]
+                    if idx_columns == ['weekday', 'employee_count', 'valid_from']:
+                        has_desired_unique = True
+                        break
+            needs_migration = not has_desired_unique
+
+        if needs_migration:
+            cursor.execute('ALTER TABLE commission_thresholds RENAME TO commission_thresholds_old')
+            create_commission_thresholds_table()
+            if 'valid_from' in columns:
+                cursor.execute('''
+                    INSERT INTO commission_thresholds (id, weekday, employee_count, threshold, valid_from)
+                    SELECT id, weekday, employee_count, threshold,
+                           COALESCE(valid_from, '1970-01-01')
+                    FROM commission_thresholds_old
+                ''')
+            else:
+                cursor.execute('''
+                    INSERT INTO commission_thresholds (id, weekday, employee_count, threshold, valid_from)
+                    SELECT id, weekday, employee_count, threshold,
+                           '1970-01-01'
+                    FROM commission_thresholds_old
+                ''')
+            cursor.execute('DROP TABLE commission_thresholds_old')
+        else:
+            cursor.execute(
+                "UPDATE commission_thresholds SET valid_from = '1970-01-01' WHERE valid_from IS NULL"
+            )
     
     # Beispieldaten einfügen falls Tabelle leer
     cursor.execute('SELECT COUNT(*) FROM employees')
@@ -173,9 +224,13 @@ def compute_commission_for_date(date_str):
 
     weekday = datetime.strptime(date_str, '%Y-%m-%d').weekday()
     th = cursor.execute(
-        'SELECT threshold FROM commission_thresholds '
-        'WHERE weekday = ? AND employee_count = ?',
-        (weekday, employee_count),
+        '''
+            SELECT threshold FROM commission_thresholds
+            WHERE weekday = ? AND employee_count = ? AND valid_from <= ?
+            ORDER BY valid_from DESC
+            LIMIT 1
+        ''',
+        (weekday, employee_count, date_str),
     ).fetchone()
     threshold = th['threshold'] if th else 0
 
@@ -561,17 +616,26 @@ def commission_thresholds():
     conn = get_db_connection()
     cursor = conn.cursor()
     if request.method == 'GET':
-        rows = cursor.execute('SELECT weekday, employee_count, threshold FROM commission_thresholds ORDER BY weekday, employee_count').fetchall()
+        rows = cursor.execute(
+            'SELECT weekday, employee_count, threshold, valid_from '
+            'FROM commission_thresholds '
+            'ORDER BY weekday, employee_count, valid_from DESC'
+        ).fetchall()
         conn.close()
         return jsonify([dict(row) for row in rows])
 
     data = request.json
     cursor.execute('''
-        INSERT INTO commission_thresholds (weekday, employee_count, threshold)
-        VALUES (?, ?, ?)
-        ON CONFLICT(weekday, employee_count) DO UPDATE SET
+        INSERT INTO commission_thresholds (weekday, employee_count, threshold, valid_from)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(weekday, employee_count, valid_from) DO UPDATE SET
             threshold = excluded.threshold
-    ''', (data['weekday'], data['employee_count'], data.get('threshold', 0)))
+    ''', (
+        data['weekday'],
+        data['employee_count'],
+        data.get('threshold', 0),
+        data.get('valid_from', '1970-01-01'),
+    ))
     conn.commit()
     conn.close()
     return jsonify({'message': 'Schwelle gespeichert'})
