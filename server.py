@@ -147,25 +147,6 @@ def init_database():
                 "UPDATE commission_thresholds SET valid_from = '1970-01-01' WHERE valid_from IS NULL"
             )
     
-    # Beispieldaten einfügen falls Tabelle leer
-    cursor.execute('SELECT COUNT(*) FROM employees')
-    if cursor.fetchone()[0] == 0:
-        today = date.today().isoformat()
-        employees = [
-            ("Alina W.", 20, 0, 1, today),
-            ("Valeria Z.", 25, 1, 1, today),
-            ("Eva C.", 30, 1, 1, today),
-            ("Hannah S.", 20, 0, 1, today),
-            ("Hans K.", 40, 1, 1, today),
-            ("Lena K.", 25, 1, 1, today),
-            ("Lorena M.", 30, 1, 1, today),
-            ("Lilo Ming K.", 20, 0, 1, today)
-        ]
-        cursor.executemany(
-            'INSERT INTO employees (name, contract_hours, has_commission, is_active, start_date) VALUES (?, ?, ?, ?, ?)',
-            employees
-        )
-    
     conn.commit()
     conn.close()
     print("Datenbank initialisiert!")

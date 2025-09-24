@@ -31,6 +31,17 @@ class CommissionThresholdsTestCase(unittest.TestCase):
         cursor.execute('DELETE FROM commission_thresholds')
         cursor.execute('DELETE FROM time_entries')
         cursor.execute('DELETE FROM revenue')
+        cursor.execute('DELETE FROM employees')
+
+        cursor.execute(
+            '''
+                INSERT INTO employees (
+                    name, contract_hours, has_commission, is_active, start_date
+                ) VALUES (?, ?, ?, ?, ?)
+            ''',
+            ('Test Employee', 40, 1, 1, '2023-01-01'),
+        )
+        employee_id = cursor.lastrowid
 
         cursor.execute(
             '''
@@ -54,7 +65,7 @@ class CommissionThresholdsTestCase(unittest.TestCase):
                     commission, duftreise_bis_18, duftreise_ab_18, notes
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''',
-            (2, '2023-06-05', 'work', '09:00', '17:00', 60, 0, 0, 0, ''),
+            (employee_id, '2023-06-05', 'work', '09:00', '17:00', 60, 0, 0, 0, ''),
         )
         cursor.execute(
             'INSERT INTO revenue (date, amount, notes) VALUES (?, ?, ?)',
@@ -68,7 +79,7 @@ class CommissionThresholdsTestCase(unittest.TestCase):
                     commission, duftreise_bis_18, duftreise_ab_18, notes
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''',
-            (2, '2024-06-03', 'work', '09:00', '17:00', 60, 0, 0, 0, ''),
+            (employee_id, '2024-06-03', 'work', '09:00', '17:00', 60, 0, 0, 0, ''),
         )
         cursor.execute(
             'INSERT INTO revenue (date, amount, notes) VALUES (?, ?, ?)',
