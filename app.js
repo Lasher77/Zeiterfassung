@@ -1,5 +1,6 @@
 // API Configuration
-const API_BASE_URL = 'http://localhost:5001/api';
+const { protocol, host } = window.location;
+const API_BASE_URL = `${protocol}//${host}/api`;
 
 // Global variables
 let currentEmployee = null;
