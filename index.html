@@ -313,6 +313,45 @@
             font-size: 0.9rem;
         }
 
+        .report-card {
+            text-align: left;
+        }
+
+        .report-card-header {
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: #343a40;
+            margin-bottom: 10px;
+        }
+
+        .report-card .summary-value,
+        .report-card .summary-label {
+            text-align: center;
+        }
+
+        .report-card-body {
+            margin-top: 15px;
+            display: grid;
+            gap: 6px;
+            font-size: 0.9rem;
+            color: #495057;
+        }
+
+        .report-card-body span {
+            font-weight: 600;
+            color: #212529;
+        }
+
+        .reports-grid {
+            align-items: stretch;
+        }
+
+        .reports-empty {
+            text-align: center;
+            color: #6c757d;
+            padding: 20px 0;
+        }
+
         /* Modal Styles */
         .modal {
             display: none;
@@ -544,11 +583,11 @@
 
         <div class="main-content">
             <div class="nav-tabs">
-                <button class="nav-tab active" onclick="showSection('dashboard')">Dashboard</button>
-                <button class="nav-tab" onclick="showSection('timetracking')">Zeiterfassung</button>
-                <button class="nav-tab" onclick="showSection('employees')">Mitarbeiter</button>
-                <button class="nav-tab" onclick="showSection('reports')">Auswertungen</button>
-                <button class="nav-tab" onclick="showSection('revenue')">Umsätze</button>
+                <button class="nav-tab active" data-section="dashboard" onclick="showSection('dashboard', this)">Dashboard</button>
+                <button class="nav-tab" data-section="timetracking" onclick="showSection('timetracking', this)">Zeiterfassung</button>
+                <button class="nav-tab" data-section="employees" onclick="showSection('employees', this)">Mitarbeiter</button>
+                <button class="nav-tab" data-section="reports" onclick="showSection('reports', this)">Auswertungen</button>
+                <button class="nav-tab" data-section="revenue" onclick="showSection('revenue', this)">Umsätze</button>
             </div>
 
             <div class="content">
@@ -622,7 +661,39 @@
 
                 <div id="reports" class="section">
                     <h2>Auswertungen</h2>
-                    <p>Hier werden Berichte und Auswertungen angezeigt.</p>
+                    <div class="controls" id="reportsControls">
+                        <div class="control-group">
+                            <label>Monat:</label>
+                            <select id="reportsMonthSelect">
+                                <option value="0">Januar</option>
+                                <option value="1">Februar</option>
+                                <option value="2">März</option>
+                                <option value="3">April</option>
+                                <option value="4">Mai</option>
+                                <option value="5">Juni</option>
+                                <option value="6">Juli</option>
+                                <option value="7">August</option>
+                                <option value="8">September</option>
+                                <option value="9">Oktober</option>
+                                <option value="10">November</option>
+                                <option value="11">Dezember</option>
+                            </select>
+                        </div>
+                        <div class="control-group">
+                            <label>Jahr:</label>
+                            <select id="reportsYearSelect">
+                                <option value="2023">2023</option>
+                                <option value="2024">2024</option>
+                                <option value="2025">2025</option>
+                                <option value="2026">2026</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary" id="reportsRefreshButton">Anzeigen</button>
+                        <button class="btn btn-secondary" id="reportsExportButton">CSV Export</button>
+                    </div>
+                    <div id="reportsOverviewContainer">
+                        <div class="loading">Bitte wählen Sie einen Zeitraum aus.</div>
+                    </div>
                 </div>
 
                 <div id="revenue" class="section">

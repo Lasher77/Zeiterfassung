@@ -13,6 +13,9 @@ let employees = [];
 let revenueEntries = [];
 let currentRevenueMonth = currentMonth;
 let currentRevenueYear = currentYear;
+let reportsOverviewSummaries = [];
+let currentReportsMonth = currentMonth;
+let currentReportsYear = currentYear;
 
 // Format date as YYYY-MM-DD in local time
 function formatDate(date) {
@@ -41,6 +44,26 @@ document.addEventListener('DOMContentLoaded', async function() {
     document.getElementById('yearSelect').value = String(currentYear);
     document.getElementById('revMonthSelect').value = String(currentMonth);
     document.getElementById('revYearSelect').value = String(currentYear);
+
+    const reportsMonthSelect = document.getElementById('reportsMonthSelect');
+    const reportsYearSelect = document.getElementById('reportsYearSelect');
+    if (reportsMonthSelect && reportsYearSelect) {
+        reportsMonthSelect.value = String(currentReportsMonth);
+        reportsYearSelect.value = String(currentReportsYear);
+
+        reportsMonthSelect.addEventListener('change', () => loadReportsOverview());
+        reportsYearSelect.addEventListener('change', () => loadReportsOverview());
+    }
+
+    const reportsRefreshButton = document.getElementById('reportsRefreshButton');
+    if (reportsRefreshButton) {
+        reportsRefreshButton.addEventListener('click', () => loadReportsOverview());
+    }
+
+    const reportsExportButton = document.getElementById('reportsExportButton');
+    if (reportsExportButton) {
+        reportsExportButton.addEventListener('click', exportReportsOverview);
+    }
 });
 
 // API Functions
@@ -128,22 +151,237 @@ async function loadDashboard() {
 }
 
 // Show section
-function showSection(sectionName) {
+function showSection(sectionName, tabElement = null) {
     // Hide all sections
     document.querySelectorAll('.section').forEach(section => {
         section.classList.remove('active');
     });
-    
+
     // Remove active class from all tabs
     document.querySelectorAll('.nav-tab').forEach(tab => {
         tab.classList.remove('active');
     });
-    
+
     // Show selected section
-    document.getElementById(sectionName).classList.add('active');
-    
-    // Add active class to clicked tab
-    event.target.classList.add('active');
+    const section = document.getElementById(sectionName);
+    if (section) {
+        section.classList.add('active');
+    }
+
+    // Add active class to clicked tab or fallback to matching tab
+    const activeTab = tabElement || (typeof event !== 'undefined' ? (event.currentTarget || event.target) : null);
+    if (activeTab) {
+        activeTab.classList.add('active');
+    } else {
+        const fallbackTab = document.querySelector(`.nav-tab[data-section="${sectionName}"]`);
+        if (fallbackTab) {
+            fallbackTab.classList.add('active');
+        }
+    }
+
+    if (sectionName === 'reports') {
+        loadReportsOverview();
+    }
+}
+
+// Load reports overview
+async function loadReportsOverview() {
+    const container = document.getElementById('reportsOverviewContainer');
+    const monthSelect = document.getElementById('reportsMonthSelect');
+    const yearSelect = document.getElementById('reportsYearSelect');
+
+    if (!container || !monthSelect || !yearSelect) {
+        return;
+    }
+
+    const month = parseInt(monthSelect.value, 10);
+    const year = parseInt(yearSelect.value, 10);
+
+    if (!Number.isFinite(month) || !Number.isFinite(year)) {
+        return;
+    }
+
+    currentReportsMonth = month;
+    currentReportsYear = year;
+    container.innerHTML = '<div class="loading">Lade Auswertungen...</div>';
+    reportsOverviewSummaries = [];
+
+    try {
+        const entries = await apiCall(`/time-entries?month=${month + 1}&year=${year}`);
+        const summaries = buildReportsOverviewSummaries(entries);
+
+        reportsOverviewSummaries = summaries;
+
+        renderReportsOverview({ month, year, summaries });
+    } catch (error) {
+        console.error('Error loading reports overview:', error);
+        container.innerHTML = `<div class="error-message">Fehler beim Laden der Auswertungen: ${error.message}</div>`;
+    }
+}
+
+function buildReportsOverviewSummaries(entries) {
+    const summaryMap = new Map();
+
+    employees.forEach(emp => {
+        if (emp.is_active) {
+            summaryMap.set(emp.id, {
+                employeeId: emp.id,
+                employeeName: emp.name,
+                totalHours: 0,
+                workDays: 0,
+                vacationDays: 0,
+                sickDays: 0,
+                duftreiseBis18: 0,
+                duftreiseAb18: 0,
+                totalCommission: 0,
+                isActive: true,
+                hasData: false
+            });
+        }
+    });
+
+    entries.forEach(entry => {
+        const employeeId = entry.employee_id;
+
+        if (!summaryMap.has(employeeId)) {
+            const fallbackName = employees.find(emp => emp.id === employeeId)?.name || entry.employee_name || 'Unbekannt';
+            summaryMap.set(employeeId, {
+                employeeId,
+                employeeName: fallbackName,
+                totalHours: 0,
+                workDays: 0,
+                vacationDays: 0,
+                sickDays: 0,
+                duftreiseBis18: 0,
+                duftreiseAb18: 0,
+                totalCommission: 0,
+                isActive: false,
+                hasData: false
+            });
+        }
+
+        const summary = summaryMap.get(employeeId);
+        summary.employeeName = entry.employee_name || summary.employeeName;
+
+        if (entry.entry_type === 'work' && entry.start_time && entry.end_time) {
+            const hours = calculateHours(entry.start_time, entry.end_time, entry.pause_minutes || 0);
+            if (Number.isFinite(hours)) {
+                summary.totalHours += hours;
+            }
+            summary.workDays += 1;
+        } else if (entry.entry_type === 'vacation') {
+            summary.vacationDays += 1;
+        } else if (entry.entry_type === 'sick') {
+            summary.sickDays += 1;
+        }
+
+        const commission = Number(entry.commission ?? 0);
+        if (Number.isFinite(commission)) {
+            summary.totalCommission += commission;
+        }
+
+        const duftreise18 = Number(entry.duftreise_bis_18 ?? 0);
+        if (Number.isFinite(duftreise18)) {
+            summary.duftreiseBis18 += duftreise18;
+        }
+
+        const duftreise18Plus = Number(entry.duftreise_ab_18 ?? 0);
+        if (Number.isFinite(duftreise18Plus)) {
+            summary.duftreiseAb18 += duftreise18Plus;
+        }
+
+        summary.hasData = true;
+    });
+
+    return Array.from(summaryMap.values())
+        .filter(item => item.hasData || item.isActive)
+        .map(({ hasData, isActive, ...rest }) => rest)
+        .sort((a, b) => a.employeeName.localeCompare(b.employeeName, 'de'));
+}
+
+function renderReportsOverview(data) {
+    const container = document.getElementById('reportsOverviewContainer');
+
+    if (!container) {
+        return;
+    }
+
+    const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+    const monthName = Number.isFinite(data.month) ? (monthNames[data.month] || '') : '';
+    const title = monthName ? `Auswertungen ${monthName} ${data.year}` : `Auswertungen ${data.year}`;
+
+    if (!data.summaries.length) {
+        container.innerHTML = `
+            <div class="month-summary">
+                <div class="summary-title">${title}</div>
+                <div class="reports-empty">Keine Daten für den ausgewählten Zeitraum vorhanden.</div>
+            </div>
+        `;
+        return;
+    }
+
+    const cards = data.summaries.map(summary => `
+        <div class="summary-item report-card">
+            <div class="report-card-header">${summary.employeeName}</div>
+            <div class="summary-value">${formatHoursMinutes(summary.totalHours)}</div>
+            <div class="summary-label">Gesamtstunden</div>
+            <div class="report-card-body">
+                <div>Arbeitstage: <span>${summary.workDays}</span></div>
+                <div>Urlaubstage: <span>${summary.vacationDays}</span></div>
+                <div>Krankheitstage: <span>${summary.sickDays}</span></div>
+                <div>Duftreisen vor 18 Uhr: <span>${summary.duftreiseBis18}</span></div>
+                <div>Duftreisen nach 18 Uhr: <span>${summary.duftreiseAb18}</span></div>
+                <div>Provision: <span>${summary.totalCommission.toFixed(2)}€</span></div>
+            </div>
+        </div>
+    `).join('');
+
+    container.innerHTML = `
+        <div class="month-summary">
+            <div class="summary-title">${title}</div>
+            <div class="summary-grid reports-grid">${cards}</div>
+        </div>
+    `;
+}
+
+function exportReportsOverview() {
+    if (!reportsOverviewSummaries.length) {
+        alert('Keine Daten zum Exportieren. Bitte laden Sie zuerst die Auswertungen.');
+        return;
+    }
+
+    const header = ['Mitarbeiter', 'Gesamtstunden', 'Arbeitstage', 'Urlaubstage', 'Krankheitstage', 'Duftreisen vor 18 Uhr', 'Duftreisen nach 18 Uhr', 'Provision (€)'];
+    const rows = [header];
+
+    reportsOverviewSummaries.forEach(summary => {
+        rows.push([
+            summary.employeeName,
+            formatHoursMinutes(summary.totalHours),
+            summary.workDays,
+            summary.vacationDays,
+            summary.sickDays,
+            summary.duftreiseBis18,
+            summary.duftreiseAb18,
+            summary.totalCommission.toFixed(2).replace('.', ',')
+        ]);
+    });
+
+    const csvContent = rows
+        .map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(';'))
+        .join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const monthNumber = String(currentReportsMonth + 1).padStart(2, '0');
+    const fileName = `auswertungen_${currentReportsYear}_${monthNumber}.csv`;
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
 }
 
 // Load calendar
