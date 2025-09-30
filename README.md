@@ -30,6 +30,14 @@ Diese professionelle Arbeitszeiterfassung nutzt eine **SQLite-Datenbank** für s
 - **Python 3.7+** und **pip3**
 - Webbrowser (Chrome, Firefox)
 
+### Zusatzpakete für den PDF-Export (WeasyPrint):
+- Für den WeasyPrint-Export werden zusätzliche **GTK-/Pango-Bibliotheken** benötigt.
+- Installationsbeispiele:
+  - **macOS (Homebrew):** `brew install pango gdk-pixbuf libffi`
+  - **Debian/Ubuntu (apt):** `sudo apt update && sudo apt install libpango-1.0-0 libgdk-pixbuf2.0-0 libffi-dev libcairo2`
+  - **Fedora/RHEL (dnf):** `sudo dnf install pango gdk-pixbuf2 cairo libffi`
+- Weitere Hinweise liefert die offizielle WeasyPrint-Dokumentation: https://doc.courtbouillon.org/weasyprint/stable/first_steps.html#troubleshooting
+
 ## 🚀 **Installation & Start**
 
 ### **Einfacher Start:**
@@ -158,6 +166,11 @@ Dann von anderen PCs erreichbar unter: `http://[IP-ADRESSE]:5001`
 
 ### **"Port bereits belegt"**
 - Anderen Port per Umgebungsvariable setzen, z.B.: `PORT=5002 ./start.sh`
+
+### **"ImportError: libgobject-2.0-0 not found" beim Start von `server.py`**
+- Ursache: Die für WeasyPrint erforderlichen GTK-/Pango-Bibliotheken fehlen.
+- Lösung: Installiere die Pakete wie oben beschrieben (z. B. `brew install pango gdk-pixbuf libffi`, `sudo apt install libpango-1.0-0 libgdk-pixbuf2.0-0 libffi-dev libcairo2` oder `sudo dnf install pango gdk-pixbuf2 cairo libffi`).
+- Prüfe ggf. die WeasyPrint-Troubleshooting-Seite: https://doc.courtbouillon.org/weasyprint/stable/first_steps.html#troubleshooting
 - In `app.js` API_BASE_URL entsprechend anpassen: `http://localhost:5002/api`
 
 ### **"Keine Verbindung zum Server"**
