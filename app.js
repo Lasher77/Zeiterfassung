@@ -24,6 +24,13 @@ function formatDate(date) {
 document.addEventListener('DOMContentLoaded', async function() {
     console.log('App initializing...');
     await loadEmployees();
+    const employeeSelect = document.getElementById('employeeSelect');
+    employeeSelect.addEventListener('change', async (e) => {
+        if (!e.target.value) {
+            return;
+        }
+        await loadCalendar();
+    });
     loadDashboard();
 
     await loadCommissionSettings();
