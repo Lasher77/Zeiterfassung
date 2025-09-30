@@ -508,6 +508,31 @@ def update_time_entry(entry_id):
 
     return jsonify({'message': 'Zeiterfassung aktualisiert'})
 
+
+@app.route('/api/time-entries/<int:entry_id>', methods=['DELETE'])
+def delete_time_entry(entry_id):
+    """Zeiterfassung löschen"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    entry = cursor.execute('SELECT date FROM time_entries WHERE id = ?', (entry_id,)).fetchone()
+
+    if not entry:
+        conn.close()
+        return jsonify({'error': 'Zeiterfassung nicht gefunden'}), 404
+
+    entry_date = entry['date']
+
+    cursor.execute('DELETE FROM time_entries WHERE id = ?', (entry_id,))
+
+    conn.commit()
+    conn.close()
+
+    compute_commission_for_date(entry_date)
+
+    return jsonify({'message': 'Zeiterfassung gelöscht'})
+
+
 @app.route('/api/revenue', methods=['GET'])
 def get_revenue():
     """Umsätze abrufen"""
