@@ -47,6 +47,21 @@ Diese professionelle Arbeitszeiterfassung nutzt eine **SQLite-Datenbank** für s
   - **Fedora/RHEL (dnf):** `sudo dnf install pango gdk-pixbuf2 cairo libffi`
 - Weitere Hinweise liefert die offizielle WeasyPrint-Dokumentation: https://doc.courtbouillon.org/weasyprint/stable/first_steps.html#troubleshooting
 
+## 🧪 WeasyPrint-Abhängigkeits-Check
+
+Führe vor dem ersten Start (oder nach Änderungen an Deinem System) den Check aus:
+
+```bash
+python check_weasyprint_dependencies.py
+```
+
+- **✅ Erfolgreich:** Starte anschließend wie gewohnt den Server (`python server.py` oder das Startskript).
+- **❌ Fehlerausgabe:** Folge den im Skript angezeigten Plattform-Hinweisen (z. B. `apt`/`dnf`-Pakete unter Linux, `brew install`
+  unter macOS inklusive der Umgebungsvariablen `DYLD_LIBRARY_PATH`/`DYLD_FALLBACK_LIBRARY_PATH`, GTK-Installer und `PATH`-Anpassung
+  unter Windows).
+- Wiederhole den Check, bis keine Fehlermeldungen mehr angezeigt werden. Erst dann ist der PDF-Export mit WeasyPrint zuverlässig
+  nutzbar.
+
 ## 🚀 **Installation & Start**
 
 ### **Einfacher Start:**
