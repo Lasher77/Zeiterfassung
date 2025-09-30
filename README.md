@@ -30,37 +30,10 @@ Diese professionelle Arbeitszeiterfassung nutzt eine **SQLite-Datenbank** für s
 - **Python 3.7+** und **pip3**
 - Webbrowser (Chrome, Firefox)
 
-### Zusatzpakete für den PDF-Export (WeasyPrint):
-- Für den WeasyPrint-Export werden zusätzliche **GTK-/Pango-Bibliotheken** benötigt.
-- Installationsbeispiele:
-  - **macOS (Homebrew):** `brew install pango gdk-pixbuf libffi`
-    
-    > 💡 **Hinweis für Apple-Silicon-/Homebrew-Installationen:** WeasyPrint benötigt Zugriff auf die von Homebrew installierten Bibliotheken. Setze deshalb vor dem Start von `server.py` die Variablen `DYLD_LIBRARY_PATH` und `DYLD_FALLBACK_LIBRARY_PATH`, z. B.:
-    > 
-    > ```bash
-    > export DYLD_LIBRARY_PATH="/opt/homebrew/lib:${DYLD_LIBRARY_PATH}"
-    > export DYLD_FALLBACK_LIBRARY_PATH="/opt/homebrew/lib:${DYLD_FALLBACK_LIBRARY_PATH}"
-    > ```
-    > 
-    > Hinterlege diese Exports dauerhaft in Deiner Shell-Konfiguration (z. B. `~/.zshrc`, `~/.bash_profile`) oder im Startskript, damit sie bei jedem Start verfügbar sind. Weitere Details findest Du in der [WeasyPrint-Dokumentation](https://doc.courtbouillon.org/weasyprint/stable/first_steps.html#macos).
-  - **Debian/Ubuntu (apt):** `sudo apt update && sudo apt install libpango-1.0-0 libgdk-pixbuf2.0-0 libffi-dev libcairo2`
-  - **Fedora/RHEL (dnf):** `sudo dnf install pango gdk-pixbuf2 cairo libffi`
-- Weitere Hinweise liefert die offizielle WeasyPrint-Dokumentation: https://doc.courtbouillon.org/weasyprint/stable/first_steps.html#troubleshooting
-
-## 🧪 WeasyPrint-Abhängigkeits-Check
-
-Führe vor dem ersten Start (oder nach Änderungen an Deinem System) den Check aus:
-
-```bash
-python check_weasyprint_dependencies.py
-```
-
-- **✅ Erfolgreich:** Starte anschließend wie gewohnt den Server (`python server.py` oder das Startskript).
-- **❌ Fehlerausgabe:** Folge den im Skript angezeigten Plattform-Hinweisen (z. B. `apt`/`dnf`-Pakete unter Linux, `brew install`
-  unter macOS inklusive der Umgebungsvariablen `DYLD_LIBRARY_PATH`/`DYLD_FALLBACK_LIBRARY_PATH`, GTK-Installer und `PATH`-Anpassung
-  unter Windows).
-- Wiederhole den Check, bis keine Fehlermeldungen mehr angezeigt werden. Erst dann ist der PDF-Export mit WeasyPrint zuverlässig
-  nutzbar.
+### Zusatzpakete für den PDF-Export (ReportLab):
+- Der PDF-Export nutzt die Python-Bibliothek [ReportLab](https://www.reportlab.com/dev/docs/).
+- Die Installation erfolgt automatisch über `pip install -r requirements.txt`.
+- Für die gängigen Plattformen stehen vorgefertigte Wheels bereit, es sind daher keine zusätzlichen nativen Bibliotheken nötig.
 
 ## 🚀 **Installation & Start**
 
@@ -191,11 +164,10 @@ Dann von anderen PCs erreichbar unter: `http://[IP-ADRESSE]:5001`
 ### **"Port bereits belegt"**
 - Anderen Port per Umgebungsvariable setzen, z.B.: `PORT=5002 ./start.sh`
 
-### **"ImportError: libgobject-2.0-0 not found" beim Start von `server.py`**
-- Ursache: Die für WeasyPrint erforderlichen GTK-/Pango-Bibliotheken fehlen.
-- Lösung: Installiere die Pakete wie oben beschrieben (z. B. `brew install pango gdk-pixbuf libffi`, `sudo apt install libpango-1.0-0 libgdk-pixbuf2.0-0 libffi-dev libcairo2` oder `sudo dnf install pango gdk-pixbuf2 cairo libffi`).
-- Prüfe ggf. die WeasyPrint-Troubleshooting-Seite: https://doc.courtbouillon.org/weasyprint/stable/first_steps.html#troubleshooting
-- **Apple Silicon/macOS Homebrew:** Setze zusätzlich dauerhaft `DYLD_LIBRARY_PATH` und `DYLD_FALLBACK_LIBRARY_PATH` (z. B. in `~/.zshrc`) auf `/opt/homebrew/lib`, damit WeasyPrint die benötigten Bibliotheken findet. Details siehe [WeasyPrint-Dokumentation](https://doc.courtbouillon.org/weasyprint/stable/first_steps.html#macos).
+### **"ImportError: No module named reportlab" beim Start von `server.py`**
+- Ursache: Die Python-Abhängigkeiten wurden nicht (oder nicht im aktiven Virtual Environment) installiert.
+- Lösung: Führe `pip install -r requirements.txt` im Projektordner aus oder aktiviere zuvor Dein Virtual Environment (`source venv/bin/activate` bzw. `venv\Scripts\activate`).
+- Alternativ kannst Du ReportLab direkt installieren: `pip install reportlab`.
 - In `app.js` API_BASE_URL entsprechend anpassen: `http://localhost:5002/api`
 
 ### **"Keine Verbindung zum Server"**

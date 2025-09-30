@@ -11,33 +11,26 @@ import io
 import os
 from datetime import datetime, date
 
-from flask import Flask, request, jsonify, send_from_directory, Response, render_template
+from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_cors import CORS
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import mm
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Paragraph,
+    Table,
+    TableStyle,
+    Spacer,
+)
 if not logging.getLogger().handlers:
     logging.basicConfig(level=logging.INFO)
-
-try:
-    from weasyprint import HTML
-
-    WEASYPRINT_AVAILABLE = True
-    WEASYPRINT_IMPORT_ERROR = None
-except (ImportError, OSError) as exc:
-    HTML = None
-    WEASYPRINT_AVAILABLE = False
-    WEASYPRINT_IMPORT_ERROR = str(exc)
 
 app = Flask(__name__)
 CORS(app)  # Erlaube Cross-Origin Requests
 
 logger = logging.getLogger(__name__)
-
-if not WEASYPRINT_AVAILABLE:
-    logger.warning(
-        "WeasyPrint konnte nicht importiert werden. PDF-Export ist deaktiviert. "
-        "Bitte folgen Sie den Hinweisen in README.md zur Installation der notwendigen "
-        "Bibliotheken. Fehler: %s",
-        WEASYPRINT_IMPORT_ERROR,
-    )
 
 # Datenbank-Pfad
 DB_PATH = 'zeiterfassung.db'
@@ -840,6 +833,152 @@ def _format_reports_overview_for_pdf(overview):
     return overview
 
 
+def _render_reports_overview_pdf(prepared_overview, month_name, generated_at):
+    """Erzeuge ein PDF-Dokument der Monatsübersicht und liefere dessen Bytes."""
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=15 * mm,
+        rightMargin=15 * mm,
+        topMargin=20 * mm,
+        bottomMargin=20 * mm,
+        title=f"Monatsübersicht {month_name} {prepared_overview.get('year', '')}",
+    )
+
+    styles = getSampleStyleSheet()
+    if 'Small' not in styles:
+        styles.add(
+            ParagraphStyle(name='Small', parent=styles['Normal'], fontSize=9, leading=11)
+        )
+    if 'Italic' not in styles:
+        styles.add(
+            ParagraphStyle(name='Italic', parent=styles['Normal'], fontName='Helvetica-Oblique')
+        )
+
+    story = []
+    title_parts = ["Monatsübersicht", month_name, str(prepared_overview.get('year', ''))]
+    title_text = " ".join(part for part in title_parts if part)
+    story.append(Paragraph(title_text.strip(), styles['Title']))
+    story.append(
+        Paragraph(
+            f"Generiert am {generated_at.strftime('%d.%m.%Y %H:%M')}",
+            styles['Small'],
+        )
+    )
+    story.append(Spacer(1, 12))
+
+    def format_decimal(value, suffix=''):
+        if value is None:
+            return '-'
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return str(value)
+        formatted = f"{number:.2f}" if not number.is_integer() else f"{int(number)}"
+        return f"{formatted}{suffix}"
+
+    for index, item in enumerate(prepared_overview.get('employees', []), start=1):
+        employee = item.get('employee', {}) or {}
+        summary = item.get('summary', {}) or {}
+        entries = item.get('entries', []) or []
+
+        employee_name = employee.get('name') or 'Unbekannter Mitarbeitender'
+        story.append(Paragraph(f"{index}. {employee_name}", styles['Heading2']))
+
+        summary_table_data = [
+            ['Kennzahl', 'Wert', 'Kennzahl', 'Wert'],
+            ['Gesamtstunden', format_decimal(summary.get('total_hours')), 'Arbeitstage', summary.get('work_days', 0)],
+            ['Urlaubstage', summary.get('vacation_days', 0), 'Krankheitstage', summary.get('sick_days', 0)],
+            [
+                'Duftreisen < 18 Uhr',
+                summary.get('total_duftreise_bis_18', 0),
+                'Duftreisen ≥ 18 Uhr',
+                summary.get('total_duftreise_ab_18', 0),
+            ],
+            [
+                'Provision',
+                format_decimal(summary.get('total_commission'), ' €'),
+                'Vertragliche Stunden (Monat)',
+                format_decimal(summary.get('contract_hours_month')),
+            ],
+        ]
+
+        summary_table = Table(summary_table_data, colWidths=[60 * mm, 35 * mm, 60 * mm, 35 * mm])
+        summary_table.setStyle(
+            TableStyle(
+                [
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+                    ('BACKGROUND', (0, 1), (-1, -1), colors.whitesmoke),
+                    ('LINEBELOW', (0, 0), (-1, 0), 0.5, colors.grey),
+                    ('INNERGRID', (0, 0), (-1, -1), 0.25, colors.grey),
+                    ('BOX', (0, 0), (-1, -1), 0.25, colors.grey),
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                    ('ALIGN', (1, 1), (-1, -1), 'CENTER'),
+                ]
+            )
+        )
+        story.append(summary_table)
+        story.append(Spacer(1, 8))
+
+        if entries:
+            entry_header = [
+                'Datum',
+                'Typ',
+                'Start',
+                'Ende',
+                'Pause (Min)',
+                'Berechnete Stunden',
+                'Provision (€)',
+                'Duft < 18',
+                'Duft ≥ 18',
+                'Notizen',
+            ]
+            entry_rows = [entry_header]
+
+            for entry in entries:
+                notes_text = entry.get('notes') or ''
+                notes_paragraph = Paragraph(notes_text.replace('\n', '<br/>'), styles['Small'])
+                entry_rows.append(
+                    [
+                        entry.get('formatted_date', ''),
+                        entry.get('entry_type_label', ''),
+                        entry.get('start_time', '') or '',
+                        entry.get('end_time', '') or '',
+                        entry.get('pause_minutes', 0),
+                        format_decimal(entry.get('calculated_hours')),
+                        format_decimal(entry.get('commission'), ' €'),
+                        entry.get('duftreise_bis_18', 0),
+                        entry.get('duftreise_ab_18', 0),
+                        notes_paragraph,
+                    ]
+                )
+
+            entry_table = Table(entry_rows, repeatRows=1)
+            entry_table.setStyle(
+                TableStyle(
+                    [
+                        ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+                        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                        ('ALIGN', (2, 1), (7, -1), 'CENTER'),
+                        ('ALIGN', (8, 1), (8, -1), 'CENTER'),
+                        ('INNERGRID', (0, 0), (-1, -1), 0.25, colors.grey),
+                        ('BOX', (0, 0), (-1, -1), 0.25, colors.grey),
+                    ]
+                )
+            )
+            story.append(entry_table)
+        else:
+            story.append(Paragraph('Keine Einträge vorhanden.', styles['Italic']))
+
+        story.append(Spacer(1, 14))
+
+    doc.build(story)
+    return buffer.getvalue()
+
+
 @app.route('/api/reports/monthly/<int:employee_id>/<int:year>/<int:month>')
 def monthly_report(employee_id, year, month):
     """Monatsbericht für Mitarbeiter"""
@@ -926,25 +1065,9 @@ def reports_overview_export(year, month):
 
 @app.route('/api/reports/overview/<int:year>/<int:month>/export/pdf')
 def reports_overview_export_pdf(year, month):
-    """Exportiere Monatsübersicht als PDF mit WeasyPrint."""
+    """Exportiere Monatsübersicht als PDF mithilfe von ReportLab."""
     if month < 1 or month > 12:
         return jsonify({'error': 'Ungültiger Monat'}), 400
-
-    if not WEASYPRINT_AVAILABLE:
-        return (
-            jsonify(
-                {
-                    'error': 'PDF-Export nicht verfügbar',
-                    'details': (
-                        'WeasyPrint konnte nicht geladen werden. Bitte folgen Sie den '
-                        'Anweisungen in README.md zur Installation der erforderlichen '
-                        'nativen Bibliotheken.'
-                    ),
-                    'exception': WEASYPRINT_IMPORT_ERROR,
-                }
-            ),
-            503,
-        )
 
     overview = get_month_overview(year, month)
     prepared_overview = _format_reports_overview_for_pdf(overview.copy())
@@ -955,28 +1078,18 @@ def reports_overview_export_pdf(year, month):
         month_name = str(month)
 
     generated_at = datetime.now()
-    html_content = render_template(
-        'reports_overview_pdf.html',
-        overview=prepared_overview,
-        month_name=month_name,
-        generated_at=generated_at,
-    )
-
-    pdf_buffer = io.BytesIO()
-
     try:
-        HTML(string=html_content, base_url=request.url_root).write_pdf(pdf_buffer)
+        pdf_bytes = _render_reports_overview_pdf(prepared_overview, month_name, generated_at)
     except Exception as exc:
+        logger.exception('PDF-Erstellung fehlgeschlagen')
         return jsonify({'error': f'PDF-Erstellung fehlgeschlagen: {exc}'}), 500
-
-    pdf_buffer.seek(0)
 
     filename = f"auswertungen_{year}_{month:02d}.pdf"
     headers = {
         'Content-Disposition': f'attachment; filename="{filename}"'
     }
 
-    return Response(pdf_buffer.getvalue(), mimetype='application/pdf', headers=headers)
+    return Response(pdf_bytes, mimetype='application/pdf', headers=headers)
 
 # Statische Dateien servieren
 @app.route('/')
