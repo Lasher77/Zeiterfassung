@@ -64,6 +64,11 @@ document.addEventListener('DOMContentLoaded', async function() {
     if (reportsExportButton) {
         reportsExportButton.addEventListener('click', exportReportsOverview);
     }
+
+    const reportsPdfExportButton = document.getElementById('reportsPdfExportButton');
+    if (reportsPdfExportButton) {
+        reportsPdfExportButton.addEventListener('click', exportReportsOverviewPdf);
+    }
 });
 
 // API Functions
@@ -293,14 +298,23 @@ function renderReportsOverview(data) {
 }
 
 async function exportReportsOverview() {
-    if (!Number.isFinite(currentReportsMonth) || !Number.isFinite(currentReportsYear)) {
+    const monthSelect = document.getElementById('reportsMonthSelect');
+    const yearSelect = document.getElementById('reportsYearSelect');
+
+    const month = monthSelect ? parseInt(monthSelect.value, 10) : currentReportsMonth;
+    const year = yearSelect ? parseInt(yearSelect.value, 10) : currentReportsYear;
+
+    if (!Number.isFinite(month) || !Number.isFinite(year)) {
         alert('Bitte wählen Sie zuerst einen gültigen Monat und ein Jahr aus.');
         return;
     }
 
-    const monthNumber = String(currentReportsMonth + 1).padStart(2, '0');
-    const fileName = `auswertungen_${currentReportsYear}_${monthNumber}.csv`;
-    const exportUrl = `${API_BASE_URL}/reports/overview/${currentReportsYear}/${currentReportsMonth + 1}/export`;
+    currentReportsMonth = month;
+    currentReportsYear = year;
+
+    const monthNumber = String(month + 1).padStart(2, '0');
+    const fileName = `auswertungen_${year}_${monthNumber}.csv`;
+    const exportUrl = `${API_BASE_URL}/reports/overview/${year}/${month + 1}/export`;
 
     try {
         const response = await fetch(exportUrl);
@@ -322,6 +336,48 @@ async function exportReportsOverview() {
     } catch (error) {
         console.error('Export error:', error);
         alert(`Fehler beim Export der Auswertungen: ${error.message}`);
+    }
+}
+
+async function exportReportsOverviewPdf() {
+    const monthSelect = document.getElementById('reportsMonthSelect');
+    const yearSelect = document.getElementById('reportsYearSelect');
+
+    const month = monthSelect ? parseInt(monthSelect.value, 10) : currentReportsMonth;
+    const year = yearSelect ? parseInt(yearSelect.value, 10) : currentReportsYear;
+
+    if (!Number.isFinite(month) || !Number.isFinite(year)) {
+        alert('Bitte wählen Sie zuerst einen gültigen Monat und ein Jahr aus.');
+        return;
+    }
+
+    currentReportsMonth = month;
+    currentReportsYear = year;
+
+    const monthNumber = String(month + 1).padStart(2, '0');
+    const fileName = `auswertungen_${year}_${monthNumber}.pdf`;
+    const exportUrl = `${API_BASE_URL}/reports/overview/${year}/${month + 1}/export/pdf`;
+
+    try {
+        const response = await fetch(exportUrl);
+
+        if (!response.ok) {
+            throw new Error(`Export fehlgeschlagen: ${response.status}`);
+        }
+
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    } catch (error) {
+        console.error('PDF export error:', error);
+        alert(`Fehler beim PDF-Export der Auswertungen: ${error.message}`);
     }
 }
 

@@ -7,16 +7,29 @@ import sqlite3
 import json
 import csv
 import io
-from datetime import datetime, date
-from flask import Flask, request, jsonify, send_from_directory, Response
-from flask_cors import CORS
 import os
+from datetime import datetime, date
+
+from flask import Flask, request, jsonify, send_from_directory, Response, render_template
+from flask_cors import CORS
+from weasyprint import HTML
 
 app = Flask(__name__)
 CORS(app)  # Erlaube Cross-Origin Requests
 
 # Datenbank-Pfad
 DB_PATH = 'zeiterfassung.db'
+
+MONTH_NAMES = [
+    'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
+    'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'
+]
+
+ENTRY_TYPE_LABELS = {
+    'work': 'Arbeit',
+    'vacation': 'Urlaub',
+    'sick': 'Krankheit'
+}
 
 def init_database():
     """Initialisiere SQLite-Datenbank mit Tabellen"""
@@ -740,6 +753,71 @@ def get_month_overview(year, month):
     }
 
 
+def _format_reports_overview_for_pdf(overview):
+    """Bereite Daten für den PDF-Export auf."""
+    formatted_employees = []
+
+    for item in overview.get('employees', []):
+        employee = item.get('employee', {})
+        summary = item.get('summary', {})
+        processed_entries = []
+
+        for entry in item.get('entries', []):
+            entry_data = dict(entry)
+            date_str = entry_data.get('date')
+
+            try:
+                parsed_date = datetime.strptime(date_str, '%Y-%m-%d') if date_str else None
+            except ValueError:
+                parsed_date = None
+
+            if parsed_date:
+                entry_data['formatted_date'] = parsed_date.strftime('%d.%m.%Y')
+            else:
+                entry_data['formatted_date'] = date_str or ''
+
+            entry_type = entry_data.get('entry_type')
+            entry_data['entry_type_label'] = ENTRY_TYPE_LABELS.get(entry_type, entry_type or '')
+
+            start_time = entry_data.get('start_time')
+            end_time = entry_data.get('end_time')
+            pause_minutes = entry_data.get('pause_minutes') or 0
+
+            calculated_hours = None
+            if entry_type == 'work' and start_time and end_time:
+                try:
+                    start_dt = datetime.strptime(start_time, '%H:%M')
+                    end_dt = datetime.strptime(end_time, '%H:%M')
+                    duration_hours = (end_dt - start_dt).total_seconds() / 3600
+                    duration_hours -= (pause_minutes or 0) / 60
+                    if duration_hours < 0:
+                        duration_hours += 24
+                    calculated_hours = round(duration_hours, 2)
+                except ValueError:
+                    calculated_hours = None
+
+            entry_data['calculated_hours'] = calculated_hours
+            entry_data['pause_minutes'] = pause_minutes
+            commission_value = entry_data.get('commission')
+            if commission_value is None:
+                commission_value = 0
+            entry_data['commission'] = round(float(commission_value), 2)
+            entry_data['duftreise_bis_18'] = entry_data.get('duftreise_bis_18') or 0
+            entry_data['duftreise_ab_18'] = entry_data.get('duftreise_ab_18') or 0
+            entry_data['notes'] = entry_data.get('notes') or ''
+
+            processed_entries.append(entry_data)
+
+        formatted_employees.append({
+            'employee': employee,
+            'summary': summary,
+            'entries': processed_entries,
+        })
+
+    overview['employees'] = formatted_employees
+    return overview
+
+
 @app.route('/api/reports/monthly/<int:employee_id>/<int:year>/<int:month>')
 def monthly_report(employee_id, year, month):
     """Monatsbericht für Mitarbeiter"""
@@ -822,6 +900,45 @@ def reports_overview_export(year, month):
     }
 
     return Response(output.getvalue(), mimetype='text/csv', headers=headers)
+
+
+@app.route('/api/reports/overview/<int:year>/<int:month>/export/pdf')
+def reports_overview_export_pdf(year, month):
+    """Exportiere Monatsübersicht als PDF mit WeasyPrint."""
+    if month < 1 or month > 12:
+        return jsonify({'error': 'Ungültiger Monat'}), 400
+
+    overview = get_month_overview(year, month)
+    prepared_overview = _format_reports_overview_for_pdf(overview.copy())
+
+    try:
+        month_name = MONTH_NAMES[month - 1]
+    except IndexError:
+        month_name = str(month)
+
+    generated_at = datetime.now()
+    html_content = render_template(
+        'reports_overview_pdf.html',
+        overview=prepared_overview,
+        month_name=month_name,
+        generated_at=generated_at,
+    )
+
+    pdf_buffer = io.BytesIO()
+
+    try:
+        HTML(string=html_content, base_url=request.url_root).write_pdf(pdf_buffer)
+    except Exception as exc:
+        return jsonify({'error': f'PDF-Erstellung fehlgeschlagen: {exc}'}), 500
+
+    pdf_buffer.seek(0)
+
+    filename = f"auswertungen_{year}_{month:02d}.pdf"
+    headers = {
+        'Content-Disposition': f'attachment; filename="{filename}"'
+    }
+
+    return Response(pdf_buffer.getvalue(), mimetype='application/pdf', headers=headers)
 
 # Statische Dateien servieren
 @app.route('/')
