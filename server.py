@@ -5,8 +5,10 @@ Arbeitszeiterfassung Backend mit SQLite
 
 import sqlite3
 import json
+import csv
+import io
 from datetime import datetime, date
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_cors import CORS
 import os
 
@@ -646,40 +648,25 @@ def commission_thresholds():
     conn.close()
     return jsonify({'message': 'Schwelle gespeichert'})
 
-@app.route('/api/reports/monthly/<int:employee_id>/<int:year>/<int:month>')
-def monthly_report(employee_id, year, month):
-    """Monatsbericht für Mitarbeiter"""
+def fetch_employee_month_entries(employee_id, year, month):
+    """Lade Zeiteinträge eines Mitarbeiters für einen bestimmten Monat"""
     conn = get_db_connection()
-    
-    # Mitarbeiter-Info
-    employee = conn.execute('SELECT * FROM employees WHERE id = ?', (employee_id,)).fetchone()
-    
-    # Zeiterfassungen des Monats
-    entries = conn.execute('''
-        SELECT * FROM time_entries
-        WHERE employee_id = ? AND strftime("%Y", date) = ? AND strftime("%m", date) = ?
-        ORDER BY date
-    ''', (employee_id, str(year), f"{month:02d}")).fetchall()
-
-    # Provisionen für alle Tage neu berechnen
-    for entry in entries:
-        compute_commission_for_date(entry['date'])
-
+    entries = conn.execute(
+        '''
+            SELECT * FROM time_entries
+            WHERE employee_id = ?
+              AND strftime("%Y", date) = ?
+              AND strftime("%m", date) = ?
+            ORDER BY date
+        ''',
+        (employee_id, str(year), f"{month:02d}"),
+    ).fetchall()
     conn.close()
+    return entries
 
-    # Einträge nach Berechnung erneut laden
-    conn = get_db_connection()
-    entries = conn.execute('''
-        SELECT * FROM time_entries
-        WHERE employee_id = ? AND strftime("%Y", date) = ? AND strftime("%m", date) = ?
-        ORDER BY date
-    ''', (employee_id, str(year), f"{month:02d}")).fetchall()
-    conn.close()
-    
-    if not employee:
-        return jsonify({'error': 'Mitarbeiter nicht gefunden'}), 404
-    
-    # Berechnungen
+
+def build_month_summary(entries, contract_hours=None):
+    """Berechne Kennzahlen über eine Menge von Zeiteinträgen"""
     total_hours = 0
     total_commission = 0
     work_days = 0
@@ -687,42 +674,154 @@ def monthly_report(employee_id, year, month):
     sick_days = 0
     total_duftreise_bis_18 = 0
     total_duftreise_ab_18 = 0
-    
+
     for entry in entries:
-        if entry['entry_type'] == 'work' and entry['start_time'] and entry['end_time']:
-            # Stunden berechnen
+        entry_type = entry['entry_type']
+        if entry_type == 'work' and entry['start_time'] and entry['end_time']:
             start = datetime.strptime(entry['start_time'], '%H:%M')
             end = datetime.strptime(entry['end_time'], '%H:%M')
             hours = (end - start).seconds / 3600 - (entry['pause_minutes'] or 0) / 60
             total_hours += hours
             work_days += 1
-        elif entry['entry_type'] == 'vacation':
+        elif entry_type == 'vacation':
             vacation_days += 1
-        elif entry['entry_type'] == 'sick':
+        elif entry_type == 'sick':
             sick_days += 1
-        
+
         total_commission += entry['commission'] or 0
         total_duftreise_bis_18 += entry['duftreise_bis_18'] or 0
         total_duftreise_ab_18 += entry['duftreise_ab_18'] or 0
+
+    summary = {
+        'total_hours': round(total_hours, 2),
+        'total_commission': round(total_commission, 2),
+        'work_days': work_days,
+        'vacation_days': vacation_days,
+        'sick_days': sick_days,
+        'total_duftreise_bis_18': total_duftreise_bis_18,
+        'total_duftreise_ab_18': total_duftreise_ab_18,
+    }
+
+    if contract_hours is not None:
+        summary['contract_hours_month'] = contract_hours * 4.33
+
+    return summary
+
+
+def get_month_overview(year, month):
+    """Bereite Monatsübersicht für alle aktiven Mitarbeitenden auf"""
+    conn = get_db_connection()
+    employees = conn.execute(
+        'SELECT * FROM employees WHERE is_active = 1 ORDER BY name'
+    ).fetchall()
+    conn.close()
+
+    overview_employees = []
+
+    for employee in employees:
+        entries = fetch_employee_month_entries(employee['id'], year, month)
+
+        for entry in entries:
+            compute_commission_for_date(entry['date'])
+
+        entries = fetch_employee_month_entries(employee['id'], year, month)
+        summary = build_month_summary(entries, employee['contract_hours'])
+
+        overview_employees.append({
+            'employee': dict(employee),
+            'entries': [dict(row) for row in entries],
+            'summary': summary,
+        })
+
+    return {
+        'month': month,
+        'year': year,
+        'employees': overview_employees,
+    }
+
+
+@app.route('/api/reports/monthly/<int:employee_id>/<int:year>/<int:month>')
+def monthly_report(employee_id, year, month):
+    """Monatsbericht für Mitarbeiter"""
+    conn = get_db_connection()
     
+    # Mitarbeiter-Info
+    employee = conn.execute('SELECT * FROM employees WHERE id = ?', (employee_id,)).fetchone()
+    conn.close()
+
+    entries = fetch_employee_month_entries(employee_id, year, month)
+
+    for entry in entries:
+        compute_commission_for_date(entry['date'])
+
+    entries = fetch_employee_month_entries(employee_id, year, month)
+    
+    if not employee:
+        return jsonify({'error': 'Mitarbeiter nicht gefunden'}), 404
+    
+    summary = build_month_summary(entries, employee['contract_hours'])
+
     report = {
         'employee': dict(employee),
         'month': month,
         'year': year,
         'entries': [dict(row) for row in entries],
-        'summary': {
-            'total_hours': round(total_hours, 2),
-            'total_commission': round(total_commission, 2),
-            'work_days': work_days,
-            'vacation_days': vacation_days,
-            'sick_days': sick_days,
-            'total_duftreise_bis_18': total_duftreise_bis_18,
-            'total_duftreise_ab_18': total_duftreise_ab_18,
-            'contract_hours_month': employee['contract_hours'] * 4.33  # Durchschnittliche Wochen pro Monat
-        }
+        'summary': summary,
     }
-    
+
     return jsonify(report)
+
+
+@app.route('/api/reports/overview/<int:year>/<int:month>')
+def reports_overview(year, month):
+    """Monatliche Übersicht für alle aktiven Mitarbeitenden"""
+    overview = get_month_overview(year, month)
+    return jsonify(overview)
+
+
+@app.route('/api/reports/overview/<int:year>/<int:month>/export')
+def reports_overview_export(year, month):
+    """Exportiere Monatsübersicht als CSV"""
+    overview = get_month_overview(year, month)
+
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=';')
+
+    writer.writerow([
+        'Mitarbeiter',
+        'Gesamtstunden',
+        'Arbeitstage',
+        'Urlaubstage',
+        'Krankheitstage',
+        'Duftreisen vor 18 Uhr',
+        'Duftreisen nach 18 Uhr',
+        'Provision',
+        'Vertragliche Stunden (Monat)',
+    ])
+
+    for item in overview['employees']:
+        employee = item['employee']
+        summary = item['summary']
+        writer.writerow([
+            employee['name'],
+            summary['total_hours'],
+            summary['work_days'],
+            summary['vacation_days'],
+            summary['sick_days'],
+            summary['total_duftreise_bis_18'],
+            summary['total_duftreise_ab_18'],
+            summary['total_commission'],
+            summary.get('contract_hours_month', 0),
+        ])
+
+    output.seek(0)
+
+    filename = f"auswertungen_{year}_{month:02d}.csv"
+    headers = {
+        'Content-Disposition': f'attachment; filename="{filename}"'
+    }
+
+    return Response(output.getvalue(), mimetype='text/csv', headers=headers)
 
 # Statische Dateien servieren
 @app.route('/')

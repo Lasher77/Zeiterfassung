@@ -129,6 +129,27 @@ PORT=5001 python server.py
 ```
 Dann von anderen PCs erreichbar unter: `http://[IP-ADRESSE]:5001`
 
+## 📡 **API-Endpunkte für Berichte**
+
+### `GET /api/reports/overview/<year>/<month>`
+- **Parameter**
+  - `year`: Vierstellige Jahreszahl (z. B. `2024`)
+  - `month`: Monat als Zahl `1-12`
+- **Rückgabe**
+  - JSON-Objekt mit `year`, `month` und einer Liste `employees`
+  - Jedes Element in `employees` enthält die Stammdaten unter `employee`, alle Monatseinträge (`entries`) sowie eine `summary`
+  - Die `summary` liefert u. a. `total_hours`, `work_days`, `vacation_days`, `sick_days`, `total_commission`, `total_duftreise_bis_18`, `total_duftreise_ab_18` und `contract_hours_month`
+- **Verwendung**
+  - Wird vom Frontend für die Übersicht im Reiter **Auswertungen** genutzt
+
+### `GET /api/reports/overview/<year>/<month>/export`
+- **Parameter**: identisch zu oben
+- **Rückgabe**
+  - CSV-Datei mit Kopfzeile und aggregierten Monatswerten je aktivem Mitarbeitenden
+  - Der Download wird als Dateianhang (`Content-Disposition: attachment`) bereitgestellt
+- **Verwendung**
+  - Das Frontend startet über den Button **CSV Export** einen Download für den ausgewählten Zeitraum
+
 ## 🛠 **Problemlösung**
 
 ### **"Python nicht gefunden"**

@@ -207,8 +207,8 @@ async function loadReportsOverview() {
     reportsOverviewSummaries = [];
 
     try {
-        const entries = await apiCall(`/time-entries?month=${month + 1}&year=${year}`);
-        const summaries = buildReportsOverviewSummaries(entries);
+        const overview = await apiCall(`/reports/overview/${year}/${month + 1}`);
+        const summaries = buildReportsOverviewSummaries(overview.employees || []);
 
         reportsOverviewSummaries = summaries;
 
@@ -219,83 +219,31 @@ async function loadReportsOverview() {
     }
 }
 
-function buildReportsOverviewSummaries(entries) {
-    const summaryMap = new Map();
+function buildReportsOverviewSummaries(overviewEmployees) {
+    if (!Array.isArray(overviewEmployees)) {
+        return [];
+    }
 
-    employees.forEach(emp => {
-        if (emp.is_active) {
-            summaryMap.set(emp.id, {
-                employeeId: emp.id,
-                employeeName: emp.name,
-                totalHours: 0,
-                workDays: 0,
-                vacationDays: 0,
-                sickDays: 0,
-                duftreiseBis18: 0,
-                duftreiseAb18: 0,
-                totalCommission: 0,
-                isActive: true,
-                hasData: false
-            });
-        }
-    });
+    return overviewEmployees
+        .map(item => {
+            const employee = item.employee || {};
+            const summary = item.summary || {};
 
-    entries.forEach(entry => {
-        const employeeId = entry.employee_id;
+            const employeeName = employee.name || 'Unbekannt';
 
-        if (!summaryMap.has(employeeId)) {
-            const fallbackName = employees.find(emp => emp.id === employeeId)?.name || entry.employee_name || 'Unbekannt';
-            summaryMap.set(employeeId, {
-                employeeId,
-                employeeName: fallbackName,
-                totalHours: 0,
-                workDays: 0,
-                vacationDays: 0,
-                sickDays: 0,
-                duftreiseBis18: 0,
-                duftreiseAb18: 0,
-                totalCommission: 0,
-                isActive: false,
-                hasData: false
-            });
-        }
-
-        const summary = summaryMap.get(employeeId);
-        summary.employeeName = entry.employee_name || summary.employeeName;
-
-        if (entry.entry_type === 'work' && entry.start_time && entry.end_time) {
-            const hours = calculateHours(entry.start_time, entry.end_time, entry.pause_minutes || 0);
-            if (Number.isFinite(hours)) {
-                summary.totalHours += hours;
-            }
-            summary.workDays += 1;
-        } else if (entry.entry_type === 'vacation') {
-            summary.vacationDays += 1;
-        } else if (entry.entry_type === 'sick') {
-            summary.sickDays += 1;
-        }
-
-        const commission = Number(entry.commission ?? 0);
-        if (Number.isFinite(commission)) {
-            summary.totalCommission += commission;
-        }
-
-        const duftreise18 = Number(entry.duftreise_bis_18 ?? 0);
-        if (Number.isFinite(duftreise18)) {
-            summary.duftreiseBis18 += duftreise18;
-        }
-
-        const duftreise18Plus = Number(entry.duftreise_ab_18 ?? 0);
-        if (Number.isFinite(duftreise18Plus)) {
-            summary.duftreiseAb18 += duftreise18Plus;
-        }
-
-        summary.hasData = true;
-    });
-
-    return Array.from(summaryMap.values())
-        .filter(item => item.hasData || item.isActive)
-        .map(({ hasData, isActive, ...rest }) => rest)
+            return {
+                employeeId: employee.id,
+                employeeName,
+                totalHours: Number(summary.total_hours ?? 0),
+                workDays: Number(summary.work_days ?? 0),
+                vacationDays: Number(summary.vacation_days ?? 0),
+                sickDays: Number(summary.sick_days ?? 0),
+                duftreiseBis18: Number(summary.total_duftreise_bis_18 ?? 0),
+                duftreiseAb18: Number(summary.total_duftreise_ab_18 ?? 0),
+                totalCommission: Number(summary.total_commission ?? 0),
+                contractHoursMonth: Number(summary.contract_hours_month ?? 0),
+            };
+        })
         .sort((a, b) => a.employeeName.localeCompare(b.employeeName, 'de'));
 }
 
@@ -344,44 +292,37 @@ function renderReportsOverview(data) {
     `;
 }
 
-function exportReportsOverview() {
-    if (!reportsOverviewSummaries.length) {
-        alert('Keine Daten zum Exportieren. Bitte laden Sie zuerst die Auswertungen.');
+async function exportReportsOverview() {
+    if (!Number.isFinite(currentReportsMonth) || !Number.isFinite(currentReportsYear)) {
+        alert('Bitte wählen Sie zuerst einen gültigen Monat und ein Jahr aus.');
         return;
     }
 
-    const header = ['Mitarbeiter', 'Gesamtstunden', 'Arbeitstage', 'Urlaubstage', 'Krankheitstage', 'Duftreisen vor 18 Uhr', 'Duftreisen nach 18 Uhr', 'Provision (€)'];
-    const rows = [header];
-
-    reportsOverviewSummaries.forEach(summary => {
-        rows.push([
-            summary.employeeName,
-            formatHoursMinutes(summary.totalHours),
-            summary.workDays,
-            summary.vacationDays,
-            summary.sickDays,
-            summary.duftreiseBis18,
-            summary.duftreiseAb18,
-            summary.totalCommission.toFixed(2).replace('.', ',')
-        ]);
-    });
-
-    const csvContent = rows
-        .map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(';'))
-        .join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const monthNumber = String(currentReportsMonth + 1).padStart(2, '0');
     const fileName = `auswertungen_${currentReportsYear}_${monthNumber}.csv`;
-    const url = URL.createObjectURL(blob);
+    const exportUrl = `${API_BASE_URL}/reports/overview/${currentReportsYear}/${currentReportsMonth + 1}/export`;
 
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    try {
+        const response = await fetch(exportUrl);
+
+        if (!response.ok) {
+            throw new Error(`Export fehlgeschlagen: ${response.status}`);
+        }
+
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    } catch (error) {
+        console.error('Export error:', error);
+        alert(`Fehler beim Export der Auswertungen: ${error.message}`);
+    }
 }
 
 // Load calendar
