@@ -34,6 +34,15 @@ Diese professionelle Arbeitszeiterfassung nutzt eine **SQLite-Datenbank** für s
 - Für den WeasyPrint-Export werden zusätzliche **GTK-/Pango-Bibliotheken** benötigt.
 - Installationsbeispiele:
   - **macOS (Homebrew):** `brew install pango gdk-pixbuf libffi`
+    
+    > 💡 **Hinweis für Apple-Silicon-/Homebrew-Installationen:** WeasyPrint benötigt Zugriff auf die von Homebrew installierten Bibliotheken. Setze deshalb vor dem Start von `server.py` die Variablen `DYLD_LIBRARY_PATH` und `DYLD_FALLBACK_LIBRARY_PATH`, z. B.:
+    > 
+    > ```bash
+    > export DYLD_LIBRARY_PATH="/opt/homebrew/lib:${DYLD_LIBRARY_PATH}"
+    > export DYLD_FALLBACK_LIBRARY_PATH="/opt/homebrew/lib:${DYLD_FALLBACK_LIBRARY_PATH}"
+    > ```
+    > 
+    > Hinterlege diese Exports dauerhaft in Deiner Shell-Konfiguration (z. B. `~/.zshrc`, `~/.bash_profile`) oder im Startskript, damit sie bei jedem Start verfügbar sind. Weitere Details findest Du in der [WeasyPrint-Dokumentation](https://doc.courtbouillon.org/weasyprint/stable/first_steps.html#macos).
   - **Debian/Ubuntu (apt):** `sudo apt update && sudo apt install libpango-1.0-0 libgdk-pixbuf2.0-0 libffi-dev libcairo2`
   - **Fedora/RHEL (dnf):** `sudo dnf install pango gdk-pixbuf2 cairo libffi`
 - Weitere Hinweise liefert die offizielle WeasyPrint-Dokumentation: https://doc.courtbouillon.org/weasyprint/stable/first_steps.html#troubleshooting
@@ -171,6 +180,7 @@ Dann von anderen PCs erreichbar unter: `http://[IP-ADRESSE]:5001`
 - Ursache: Die für WeasyPrint erforderlichen GTK-/Pango-Bibliotheken fehlen.
 - Lösung: Installiere die Pakete wie oben beschrieben (z. B. `brew install pango gdk-pixbuf libffi`, `sudo apt install libpango-1.0-0 libgdk-pixbuf2.0-0 libffi-dev libcairo2` oder `sudo dnf install pango gdk-pixbuf2 cairo libffi`).
 - Prüfe ggf. die WeasyPrint-Troubleshooting-Seite: https://doc.courtbouillon.org/weasyprint/stable/first_steps.html#troubleshooting
+- **Apple Silicon/macOS Homebrew:** Setze zusätzlich dauerhaft `DYLD_LIBRARY_PATH` und `DYLD_FALLBACK_LIBRARY_PATH` (z. B. in `~/.zshrc`) auf `/opt/homebrew/lib`, damit WeasyPrint die benötigten Bibliotheken findet. Details siehe [WeasyPrint-Dokumentation](https://doc.courtbouillon.org/weasyprint/stable/first_steps.html#macos).
 - In `app.js` API_BASE_URL entsprechend anpassen: `http://localhost:5002/api`
 
 ### **"Keine Verbindung zum Server"**
