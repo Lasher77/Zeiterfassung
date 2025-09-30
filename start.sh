@@ -21,6 +21,17 @@ echo
 # Installiere Abh\xE4ngigkeiten falls nicht vorhanden
 pip3 install -r requirements.txt > /dev/null 2>&1
 
+if command -v brew >/dev/null; then
+    brew_prefix=$(brew --prefix 2>/dev/null)
+    if [ -z "$brew_prefix" ]; then
+        brew_prefix="/opt/homebrew"
+    fi
+
+    brew_lib_paths="$brew_prefix/lib:$brew_prefix/opt/libffi/lib"
+    export DYLD_LIBRARY_PATH="$brew_lib_paths${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
+    export DYLD_FALLBACK_LIBRARY_PATH="$brew_lib_paths${DYLD_FALLBACK_LIBRARY_PATH:+:$DYLD_FALLBACK_LIBRARY_PATH}"
+fi
+
 # Port setzen (übernimmt vorhandene PORT-Variable oder nutzt 5001)
 PORT=${PORT:-5001}
 export PORT
