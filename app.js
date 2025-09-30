@@ -336,7 +336,17 @@ function openTimeModal(dateStr) {
     const title = document.getElementById('modalTitle');
     const date = new Date(dateStr);
     
-    title.textContent = `Zeiterfassung - ${date.toLocaleDateString('de-DE')}`;
+    const formattedDate = date.toLocaleDateString('de-DE', {
+        weekday: 'long',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+    });
+    const capitalizedDate = formattedDate
+        ? formattedDate.charAt(0).toUpperCase() + formattedDate.slice(1)
+        : '';
+
+    title.textContent = `Zeiterfassung – ${capitalizedDate}`;
     
     // Find existing entry
     const entry = timeEntries.find(e => e.date === dateStr);
