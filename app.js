@@ -253,10 +253,14 @@ function renderMonthSummary() {
         return sum;
     }, 0);
     
-    const totalDuftreisen = timeEntries.reduce((sum, entry) => {
-        const bis18 = Number(entry.duftreise_bis_18 ?? 0);
-        const ab18 = Number(entry.duftreise_ab_18 ?? 0);
-        return sum + (Number.isFinite(bis18) ? bis18 : 0) + (Number.isFinite(ab18) ? ab18 : 0);
+    const totalDuftreiseBis18 = timeEntries.reduce((sum, entry) => {
+        const value = Number(entry.duftreise_bis_18 ?? 0);
+        return sum + (Number.isFinite(value) ? value : 0);
+    }, 0);
+
+    const totalDuftreiseAb18 = timeEntries.reduce((sum, entry) => {
+        const value = Number(entry.duftreise_ab_18 ?? 0);
+        return sum + (Number.isFinite(value) ? value : 0);
     }, 0);
 
     const totalProvision = timeEntries.reduce((sum, entry) => {
@@ -287,8 +291,12 @@ function renderMonthSummary() {
                 <div class="summary-label">Krankheitstage</div>
             </div>
             <div class="summary-item">
-                <div class="summary-value">${totalDuftreisen}</div>
-                <div class="summary-label">Duftreisen gesamt</div>
+                <div class="summary-value">${totalDuftreiseBis18}</div>
+                <div class="summary-label">Duftreisen vor 18 Uhr</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-value">${totalDuftreiseAb18}</div>
+                <div class="summary-label">Duftreisen nach 18 Uhr</div>
             </div>
             <div class="summary-item">
                 <div class="summary-value">${safeTotalProvision.toFixed(2)}€</div>
