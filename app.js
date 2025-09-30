@@ -218,7 +218,7 @@ function renderCalendar() {
                     dayInfo = '<div class="day-info">Krank</div>';
                 } else if (entry.start_time && entry.end_time) {
                     const hours = calculateHours(entry.start_time, entry.end_time, entry.pause_minutes || 0);
-                    dayInfo = `<div class="day-info">${entry.start_time}-${entry.end_time}<br>${hours}h</div>`;
+                    dayInfo = `<div class="day-info">${entry.start_time}-${entry.end_time}<br>${formatHoursMinutes(hours)}</div>`;
                 }
             }
             
@@ -275,7 +275,7 @@ function renderMonthSummary() {
         <div class="summary-title">Monatsübersicht ${currentEmployee.name}</div>
         <div class="summary-grid">
             <div class="summary-item">
-                <div class="summary-value">${safeTotalHours.toFixed(1)}</div>
+                <div class="summary-value">${formatHoursMinutes(safeTotalHours)}</div>
                 <div class="summary-label">Gesamtstunden</div>
             </div>
             <div class="summary-item">
@@ -315,6 +315,19 @@ function calculateHours(startTime, endTime, pause) {
     const diffMs = end - start;
     const diffHours = diffMs / (1000 * 60 * 60);
     return Math.max(0, diffHours - (pause / 60));
+}
+
+function formatHoursMinutes(totalHours) {
+    if (!Number.isFinite(totalHours)) {
+        return '0h00min';
+    }
+
+    const safeHours = Math.max(0, totalHours);
+    const totalMinutes = Math.round(safeHours * 60);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = String(totalMinutes % 60).padStart(2, '0');
+
+    return `${hours}h${minutes}min`;
 }
 
 // Open time modal
