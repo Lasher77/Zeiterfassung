@@ -197,6 +197,16 @@
             transform: translateY(-1px);
         }
 
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #a71d2a;
+            transform: translateY(-1px);
+        }
+
         /* Calendar Styles */
         .calendar-header {
             background: #007bff;
@@ -745,6 +755,7 @@
 
             <div class="modal-actions">
                 <button class="btn btn-secondary" onclick="closeModal()">Abbrechen</button>
+                <button type="button" class="btn btn-danger" id="deleteEntryButton" style="display: none;" onclick="deleteCurrentEntry()">Löschen</button>
                 <button class="btn btn-primary" onclick="saveEntry()">Speichern</button>
             </div>
         </div>

@@ -360,11 +360,17 @@ function openTimeModal(dateStr) {
     document.getElementById('duftreisen1').value = entry?.duftreise_bis_18 || '';
     document.getElementById('duftreisen2').value = entry?.duftreise_ab_18 || '';
     document.getElementById('notes').value = entry?.notes || '';
-    
+
     // Store current date
     modal.dataset.date = dateStr;
     modal.dataset.entryId = entry?.id || '';
-    
+
+    const deleteButton = document.getElementById('deleteEntryButton');
+    if (deleteButton) {
+        deleteButton.style.display = entry ? 'inline-flex' : 'none';
+        deleteButton.disabled = !entry;
+    }
+
     toggleFields();
     modal.classList.add('show');
 }
@@ -393,20 +399,53 @@ async function saveEntry() {
     const date = modal.dataset.date;
     const entryId = modal.dataset.entryId;
     
+    const startTimeValue = document.getElementById('startTime').value.trim();
+    const endTimeValue = document.getElementById('endTime').value.trim();
+    const notesValue = document.getElementById('notes').value.trim();
+
     const data = {
         employee_id: currentEmployee.id,
         date: date,
         entry_type: document.getElementById('entryType').value,
-        start_time: document.getElementById('startTime').value || null,
-        end_time: document.getElementById('endTime').value || null,
+        start_time: startTimeValue || null,
+        end_time: endTimeValue || null,
         pause_minutes: parseInt(document.getElementById('pause').value) || 0,
         commission: parseFloat(document.getElementById('provision').value) || 0,
         duftreise_bis_18: parseInt(document.getElementById('duftreisen1').value) || 0,
         duftreise_ab_18: parseInt(document.getElementById('duftreisen2').value) || 0,
-        notes: document.getElementById('notes').value || null
+        notes: notesValue || null
     };
-    
+
+    const isWorkType = data.entry_type === 'work';
+    const hasStart = Boolean(data.start_time);
+    const hasEnd = Boolean(data.end_time);
+    const workFieldsEmpty = isWorkType && !hasStart && !hasEnd &&
+        !data.notes && (data.pause_minutes === 0) && (data.commission === 0) &&
+        (data.duftreise_bis_18 === 0) && (data.duftreise_ab_18 === 0);
+
+    if (isWorkType && (hasStart !== hasEnd)) {
+        alert('Bitte sowohl Start- als auch Endzeit angeben oder den Eintrag löschen.');
+        return;
+    }
+
     try {
+        if (entryId && workFieldsEmpty) {
+            const shouldDelete = confirm('Alle Pflichtfelder wurden geleert. Soll der Eintrag gelöscht werden?');
+            if (shouldDelete) {
+                await deleteEntryById(entryId);
+                closeModal();
+                await loadCalendar();
+            } else {
+                alert('Verwenden Sie zum Entfernen den Löschen-Button.');
+            }
+            return;
+        }
+
+        if (!entryId && workFieldsEmpty) {
+            alert('Bitte Arbeitszeiten erfassen oder den Tag frei lassen.');
+            return;
+        }
+
         if (entryId) {
             // Update existing entry
             await apiCall(`/time-entries/${entryId}`, {
@@ -420,11 +459,40 @@ async function saveEntry() {
                 body: JSON.stringify(data)
             });
         }
-        
+
         closeModal();
-        loadCalendar(); // Reload calendar
+        await loadCalendar(); // Reload calendar
     } catch (error) {
         console.error('Error saving entry:', error);
+        alert(error.message);
+    }
+}
+
+async function deleteEntryById(entryId) {
+    await apiCall(`/time-entries/${entryId}`, {
+        method: 'DELETE'
+    });
+}
+
+async function deleteCurrentEntry() {
+    const modal = document.getElementById('timeModal');
+    const entryId = modal.dataset.entryId;
+
+    if (!entryId) {
+        return;
+    }
+
+    const confirmDelete = confirm('Möchten Sie diesen Eintrag wirklich löschen?');
+    if (!confirmDelete) {
+        return;
+    }
+
+    try {
+        await deleteEntryById(entryId);
+        closeModal();
+        await loadCalendar();
+    } catch (error) {
+        console.error('Error deleting entry:', error);
         alert(error.message);
     }
 }
