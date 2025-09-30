@@ -3,6 +3,7 @@
 Arbeitszeiterfassung Backend mit SQLite
 """
 
+import logging
 import sqlite3
 import json
 import csv
@@ -12,10 +13,31 @@ from datetime import datetime, date
 
 from flask import Flask, request, jsonify, send_from_directory, Response, render_template
 from flask_cors import CORS
-from weasyprint import HTML
+if not logging.getLogger().handlers:
+    logging.basicConfig(level=logging.INFO)
+
+try:
+    from weasyprint import HTML
+
+    WEASYPRINT_AVAILABLE = True
+    WEASYPRINT_IMPORT_ERROR = None
+except (ImportError, OSError) as exc:
+    HTML = None
+    WEASYPRINT_AVAILABLE = False
+    WEASYPRINT_IMPORT_ERROR = str(exc)
 
 app = Flask(__name__)
 CORS(app)  # Erlaube Cross-Origin Requests
+
+logger = logging.getLogger(__name__)
+
+if not WEASYPRINT_AVAILABLE:
+    logger.warning(
+        "WeasyPrint konnte nicht importiert werden. PDF-Export ist deaktiviert. "
+        "Bitte folgen Sie den Hinweisen in README.md zur Installation der notwendigen "
+        "Bibliotheken. Fehler: %s",
+        WEASYPRINT_IMPORT_ERROR,
+    )
 
 # Datenbank-Pfad
 DB_PATH = 'zeiterfassung.db'
@@ -907,6 +929,22 @@ def reports_overview_export_pdf(year, month):
     """Exportiere Monatsübersicht als PDF mit WeasyPrint."""
     if month < 1 or month > 12:
         return jsonify({'error': 'Ungültiger Monat'}), 400
+
+    if not WEASYPRINT_AVAILABLE:
+        return (
+            jsonify(
+                {
+                    'error': 'PDF-Export nicht verfügbar',
+                    'details': (
+                        'WeasyPrint konnte nicht geladen werden. Bitte folgen Sie den '
+                        'Anweisungen in README.md zur Installation der erforderlichen '
+                        'nativen Bibliotheken.'
+                    ),
+                    'exception': WEASYPRINT_IMPORT_ERROR,
+                }
+            ),
+            503,
+        )
 
     overview = get_month_overview(year, month)
     prepared_overview = _format_reports_overview_for_pdf(overview.copy())
