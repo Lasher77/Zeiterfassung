@@ -914,16 +914,21 @@ def _render_reports_overview_pdf(prepared_overview, month_name, generated_at):
             styles['EmployeeName'],
         )
 
-        duftreise_total = (summary.get('total_duftreise_bis_18') or 0) + (
-            summary.get('total_duftreise_ab_18') or 0
-        )
-
         metrics_config = [
             ('Gesamtstunden', summary.get('total_hours'), ''),
             ('Arbeitstage', summary.get('work_days'), ''),
             ('Urlaubstage', summary.get('vacation_days'), ''),
             ('Krankheitstage', summary.get('sick_days'), ''),
-            ('Duftreisen gesamt', duftreise_total, ''),
+            (
+                'Duftreisen vor 18 Uhr',
+                summary.get('total_duftreise_bis_18'),
+                '',
+            ),
+            (
+                'Duftreisen nach 18 Uhr',
+                summary.get('total_duftreise_ab_18'),
+                '',
+            ),
             ('Provision gesamt', summary.get('total_commission'), ' €'),
         ]
 
