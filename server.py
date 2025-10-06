@@ -10,11 +10,12 @@ import csv
 import io
 import os
 from datetime import datetime, date
+from xml.sax.saxutils import escape
 
 from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_cors import CORS
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import (
@@ -838,7 +839,7 @@ def _render_reports_overview_pdf(prepared_overview, month_name, generated_at):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer,
-        pagesize=A4,
+        pagesize=landscape(A4),
         leftMargin=15 * mm,
         rightMargin=15 * mm,
         topMargin=20 * mm,
@@ -854,6 +855,28 @@ def _render_reports_overview_pdf(prepared_overview, month_name, generated_at):
     if 'Italic' not in styles:
         styles.add(
             ParagraphStyle(name='Italic', parent=styles['Normal'], fontName='Helvetica-Oblique')
+        )
+    if 'Metric' not in styles:
+        styles.add(
+            ParagraphStyle(
+                name='Metric',
+                parent=styles['Normal'],
+                leading=14,
+                alignment=1,
+                spaceBefore=0,
+                spaceAfter=0,
+            )
+        )
+    if 'EmployeeName' not in styles:
+        styles.add(
+            ParagraphStyle(
+                name='EmployeeName',
+                parent=styles['Normal'],
+                fontSize=12,
+                leading=14,
+                spaceBefore=0,
+                spaceAfter=0,
+            )
         )
 
     story = []
@@ -878,44 +901,78 @@ def _render_reports_overview_pdf(prepared_overview, month_name, generated_at):
         formatted = f"{number:.2f}" if not number.is_integer() else f"{int(number)}"
         return f"{formatted}{suffix}"
 
-    for index, item in enumerate(prepared_overview.get('employees', []), start=1):
+    for item in prepared_overview.get('employees', []):
         employee = item.get('employee', {}) or {}
         summary = item.get('summary', {}) or {}
         entries = item.get('entries', []) or []
 
         employee_name = employee.get('name') or 'Unbekannter Mitarbeitender'
-        story.append(Paragraph(f"{index}. {employee_name}", styles['Heading2']))
+        safe_employee_name = escape(employee_name)
+        name_paragraph = Paragraph(
+            (
+                "<para alignment='left'><font size='12'><b>{}</b></font><br/>"
+                "<font size='9' color='#555555'>Monatsübersicht</font></para>"
+            ).format(safe_employee_name),
+            styles['EmployeeName'],
+        )
 
-        summary_table_data = [
-            ['Kennzahl', 'Wert', 'Kennzahl', 'Wert'],
-            ['Gesamtstunden', format_decimal(summary.get('total_hours')), 'Arbeitstage', summary.get('work_days', 0)],
-            ['Urlaubstage', summary.get('vacation_days', 0), 'Krankheitstage', summary.get('sick_days', 0)],
-            [
-                'Duftreisen < 18 Uhr',
-                summary.get('total_duftreise_bis_18', 0),
-                'Duftreisen ≥ 18 Uhr',
-                summary.get('total_duftreise_ab_18', 0),
-            ],
-            [
-                'Provision',
-                format_decimal(summary.get('total_commission'), ' €'),
-                'Vertragliche Stunden (Monat)',
-                format_decimal(summary.get('contract_hours_month')),
-            ],
+        duftreise_total = (summary.get('total_duftreise_bis_18') or 0) + (
+            summary.get('total_duftreise_ab_18') or 0
+        )
+
+        metrics_config = [
+            ('Gesamtstunden', summary.get('total_hours'), ''),
+            ('Arbeitstage', summary.get('work_days'), ''),
+            ('Urlaubstage', summary.get('vacation_days'), ''),
+            ('Krankheitstage', summary.get('sick_days'), ''),
+            ('Duftreisen gesamt', duftreise_total, ''),
+            ('Provision gesamt', summary.get('total_commission'), ' €'),
         ]
 
-        summary_table = Table(summary_table_data, colWidths=[60 * mm, 35 * mm, 60 * mm, 35 * mm])
+        contract_hours_month = summary.get('contract_hours_month')
+        if contract_hours_month is not None:
+            metrics_config.append(('Vertragliche Stunden (Monat)', contract_hours_month, ''))
+
+        metric_cells = []
+        for label, value, suffix in metrics_config:
+            metric_value = format_decimal(value, suffix)
+            metric_value = escape(metric_value)
+            metric_label = escape(label)
+            metric_cells.append(
+                Paragraph(
+                    "<para alignment='center'><font size='14'><b>{}</b></font><br/><font size='9' color='#555555'>{}</font></para>".format(
+                        metric_value, metric_label
+                    ),
+                    styles['Metric'],
+                )
+            )
+
+        available_width = doc.width
+        name_col_width = available_width * 0.22
+        if metric_cells:
+            metric_col_width = (available_width - name_col_width) / len(metric_cells)
+        else:
+            metric_col_width = available_width - name_col_width
+
+        summary_row = [name_paragraph] + metric_cells
+        summary_table = Table(
+            [summary_row],
+            colWidths=[name_col_width] + [metric_col_width] * len(metric_cells),
+            hAlign='LEFT',
+        )
         summary_table.setStyle(
             TableStyle(
                 [
-                    ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
-                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
-                    ('BACKGROUND', (0, 1), (-1, -1), colors.whitesmoke),
-                    ('LINEBELOW', (0, 0), (-1, 0), 0.5, colors.grey),
-                    ('INNERGRID', (0, 0), (-1, -1), 0.25, colors.grey),
-                    ('BOX', (0, 0), (-1, -1), 0.25, colors.grey),
+                    ('BACKGROUND', (0, 0), (0, 0), colors.HexColor('#EEF2F7')),
+                    ('BACKGROUND', (1, 0), (-1, 0), colors.HexColor('#F9FAFB')),
+                    ('BOX', (0, 0), (-1, -1), 0.6, colors.HexColor('#D8DFEA')),
+                    ('INNERGRID', (1, 0), (-1, -1), 0.4, colors.HexColor('#E5EAF2')),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 10),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+                    ('TOPPADDING', (0, 0), (-1, -1), 10),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
                     ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                    ('ALIGN', (1, 1), (-1, -1), 'CENTER'),
+                    ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
                 ]
             )
         )
