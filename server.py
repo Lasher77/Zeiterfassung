@@ -904,8 +904,6 @@ def _render_reports_overview_pdf(prepared_overview, month_name, generated_at):
     for item in prepared_overview.get('employees', []):
         employee = item.get('employee', {}) or {}
         summary = item.get('summary', {}) or {}
-        entries = item.get('entries', []) or []
-
         employee_name = employee.get('name') or 'Unbekannter Mitarbeitender'
         safe_employee_name = escape(employee_name)
         name_paragraph = Paragraph(
@@ -928,10 +926,6 @@ def _render_reports_overview_pdf(prepared_overview, month_name, generated_at):
             ('Duftreisen gesamt', duftreise_total, ''),
             ('Provision gesamt', summary.get('total_commission'), ' €'),
         ]
-
-        contract_hours_month = summary.get('contract_hours_month')
-        if contract_hours_month is not None:
-            metrics_config.append(('Vertragliche Stunden (Monat)', contract_hours_month, ''))
 
         metric_cells = []
         for label, value, suffix in metrics_config:
@@ -977,59 +971,6 @@ def _render_reports_overview_pdf(prepared_overview, month_name, generated_at):
             )
         )
         story.append(summary_table)
-        story.append(Spacer(1, 8))
-
-        if entries:
-            entry_header = [
-                'Datum',
-                'Typ',
-                'Start',
-                'Ende',
-                'Pause (Min)',
-                'Berechnete Stunden',
-                'Provision (€)',
-                'Duft < 18',
-                'Duft ≥ 18',
-                'Notizen',
-            ]
-            entry_rows = [entry_header]
-
-            for entry in entries:
-                notes_text = entry.get('notes') or ''
-                notes_paragraph = Paragraph(notes_text.replace('\n', '<br/>'), styles['Small'])
-                entry_rows.append(
-                    [
-                        entry.get('formatted_date', ''),
-                        entry.get('entry_type_label', ''),
-                        entry.get('start_time', '') or '',
-                        entry.get('end_time', '') or '',
-                        entry.get('pause_minutes', 0),
-                        format_decimal(entry.get('calculated_hours')),
-                        format_decimal(entry.get('commission'), ' €'),
-                        entry.get('duftreise_bis_18', 0),
-                        entry.get('duftreise_ab_18', 0),
-                        notes_paragraph,
-                    ]
-                )
-
-            entry_table = Table(entry_rows, repeatRows=1)
-            entry_table.setStyle(
-                TableStyle(
-                    [
-                        ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
-                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
-                        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                        ('ALIGN', (2, 1), (7, -1), 'CENTER'),
-                        ('ALIGN', (8, 1), (8, -1), 'CENTER'),
-                        ('INNERGRID', (0, 0), (-1, -1), 0.25, colors.grey),
-                        ('BOX', (0, 0), (-1, -1), 0.25, colors.grey),
-                    ]
-                )
-            )
-            story.append(entry_table)
-        else:
-            story.append(Paragraph('Keine Einträge vorhanden.', styles['Italic']))
-
         story.append(Spacer(1, 14))
 
     doc.build(story)
