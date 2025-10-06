@@ -904,6 +904,18 @@ def _render_reports_overview_pdf(prepared_overview, month_name, generated_at):
         formatted = f"{number:.2f}" if not number.is_integer() else f"{int(number)}"
         return f"{formatted}{suffix}"
 
+    def format_hours_minutes(value):
+        if value is None:
+            return '-'
+        try:
+            total_minutes = int(round(float(value) * 60))
+        except (TypeError, ValueError):
+            return str(value)
+
+        hours = total_minutes // 60
+        minutes = total_minutes % 60
+        return f"{hours} h {minutes:02d} min"
+
     for item in prepared_overview.get('employees', []):
         employee = item.get('employee', {}) or {}
         summary = item.get('summary', {}) or {}
@@ -937,7 +949,10 @@ def _render_reports_overview_pdf(prepared_overview, month_name, generated_at):
 
         metric_cells = []
         for label, value, suffix in metrics_config:
-            metric_value = format_decimal(value, suffix)
+            if label == 'Gesamtstunden':
+                metric_value = format_hours_minutes(value)
+            else:
+                metric_value = format_decimal(value, suffix)
             metric_value = escape(metric_value)
             metric_label = escape(label)
             metric_cells.append(
