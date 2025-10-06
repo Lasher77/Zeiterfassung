@@ -207,32 +207,35 @@ def compute_commission_for_date(date_str):
     percentage = settings['percentage'] if settings else 0
     monthly_max = settings['monthly_max'] if settings else 0
 
-    # Mitarbeiter, die an diesem Tag gearbeitet haben und provisionsberechtigt sind
+    # Arbeitszeiten des Tages (für Schwellwert alle, für Auszahlung nur berechtigte)
     entries = cursor.execute(
         '''
             SELECT te.id, te.employee_id, te.start_time, te.end_time,
-                   te.pause_minutes
+                   te.pause_minutes, e.has_commission
             FROM time_entries te
             JOIN employees e ON te.employee_id = e.id
             WHERE te.date = ?
               AND te.entry_type = 'work'
               AND te.start_time IS NOT NULL AND te.end_time IS NOT NULL
-              AND e.has_commission = 1
         ''',
         (date_str,),
     ).fetchall()
 
     emp_hours = {}
     entry_ids = {}
+    all_employee_ids = set()
     for row in entries:
         start = datetime.strptime(row['start_time'], '%H:%M')
         end = datetime.strptime(row['end_time'], '%H:%M')
         hours = (end - start).seconds / 3600 - (row['pause_minutes'] or 0) / 60
-        emp_hours.setdefault(row['employee_id'], 0)
-        emp_hours[row['employee_id']] += hours
-        entry_ids[row['employee_id']] = row['id']
+        all_employee_ids.add(row['employee_id'])
 
-    employee_count = len(emp_hours)
+        if row['has_commission']:
+            emp_hours.setdefault(row['employee_id'], 0)
+            emp_hours[row['employee_id']] += hours
+            entry_ids[row['employee_id']] = row['id']
+
+    employee_count = len(all_employee_ids)
 
     weekday = datetime.strptime(date_str, '%Y-%m-%d').weekday()
     th = cursor.execute(
