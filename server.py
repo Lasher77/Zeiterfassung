@@ -837,7 +837,9 @@ def _format_reports_overview_for_pdf(overview):
     return overview
 
 
-def _render_reports_overview_pdf(prepared_overview, month_name, generated_at):
+def _render_reports_overview_pdf(
+    prepared_overview, month_name, generated_at, include_details=False
+):
     """Erzeuge ein PDF-Dokument der Monatsübersicht und liefere dessen Bytes."""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -919,6 +921,7 @@ def _render_reports_overview_pdf(prepared_overview, month_name, generated_at):
     for item in prepared_overview.get('employees', []):
         employee = item.get('employee', {}) or {}
         summary = item.get('summary', {}) or {}
+        entries = item.get('entries', []) or []
         employee_name = employee.get('name') or 'Unbekannter Mitarbeitender'
         safe_employee_name = escape(employee_name)
         name_paragraph = Paragraph(
@@ -994,10 +997,124 @@ def _render_reports_overview_pdf(prepared_overview, month_name, generated_at):
             )
         )
         story.append(summary_table)
+
+        if include_details:
+            story.append(Spacer(1, 8))
+
+            if entries:
+                detail_headers = [
+                    'Datum',
+                    'Typ',
+                    'Start',
+                    'Ende',
+                    'Pause',
+                    'Arbeitszeit',
+                    'Duftreisen < 18',
+                    'Duftreisen ≥ 18',
+                    'Provision',
+                    'Notizen',
+                ]
+                detail_rows = [
+                    [Paragraph(f'<b>{escape(header)}</b>', styles['Small']) for header in detail_headers]
+                ]
+
+                for entry in entries:
+                    pause_value = entry.get('pause_minutes')
+                    if pause_value in (None, ''):
+                        pause_display = '-'
+                    else:
+                        pause_display = f"{int(pause_value)} min"
+
+                    detail_rows.append(
+                        [
+                            Paragraph(escape(entry.get('formatted_date') or '-'), styles['Small']),
+                            Paragraph(escape(entry.get('entry_type_label') or '-'), styles['Small']),
+                            Paragraph(escape(entry.get('start_time') or '-'), styles['Small']),
+                            Paragraph(escape(entry.get('end_time') or '-'), styles['Small']),
+                            Paragraph(escape(pause_display), styles['Small']),
+                            Paragraph(
+                                escape(format_hours_minutes(entry.get('calculated_hours'))),
+                                styles['Small'],
+                            ),
+                            Paragraph(
+                                escape(format_decimal(entry.get('duftreise_bis_18'))),
+                                styles['Small'],
+                            ),
+                            Paragraph(
+                                escape(format_decimal(entry.get('duftreise_ab_18'))),
+                                styles['Small'],
+                            ),
+                            Paragraph(
+                                escape(format_decimal(entry.get('commission'), ' €')),
+                                styles['Small'],
+                            ),
+                            Paragraph(escape(entry.get('notes') or '-'), styles['Small']),
+                        ]
+                    )
+
+                column_widths = [
+                    doc.width * width
+                    for width in [0.1, 0.12, 0.08, 0.08, 0.08, 0.1, 0.08, 0.08, 0.1, 0.18]
+                ]
+
+                detail_table = Table(detail_rows, colWidths=column_widths, repeatRows=1)
+                detail_table.setStyle(
+                    TableStyle(
+                        [
+                            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E3E8F0')),
+                            ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#1F2937')),
+                            ('BOX', (0, 0), (-1, -1), 0.4, colors.HexColor('#D1D5DB')),
+                            ('INNERGRID', (0, 0), (-1, -1), 0.25, colors.HexColor('#E5E7EB')),
+                            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+                            ('ALIGN', (2, 1), (8, -1), 'CENTER'),
+                            ('LEFTPADDING', (0, 0), (-1, -1), 6),
+                            ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+                            ('TOPPADDING', (0, 0), (-1, -1), 4),
+                            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+                        ]
+                    )
+                )
+                story.append(detail_table)
+            else:
+                story.append(Paragraph('Keine Tagesdaten vorhanden.', styles['Small']))
+
         story.append(Spacer(1, 14))
 
     doc.build(story)
     return buffer.getvalue()
+
+
+def _build_reports_overview_pdf_response(year, month, include_details=False):
+    """Erzeuge eine HTTP-Antwort mit dem Monatsübersicht-PDF."""
+    if month < 1 or month > 12:
+        return jsonify({'error': 'Ungültiger Monat'}), 400
+
+    overview = get_month_overview(year, month)
+    prepared_overview = _format_reports_overview_for_pdf(overview.copy())
+
+    try:
+        month_name = MONTH_NAMES[month - 1]
+    except IndexError:
+        month_name = str(month)
+
+    generated_at = datetime.now()
+    try:
+        pdf_bytes = _render_reports_overview_pdf(
+            prepared_overview,
+            month_name,
+            generated_at,
+            include_details=include_details,
+        )
+    except Exception as exc:
+        logger.exception('PDF-Erstellung fehlgeschlagen')
+        return jsonify({'error': f'PDF-Erstellung fehlgeschlagen: {exc}'}), 500
+
+    filename_suffix = '_detailliert' if include_details else ''
+    filename = f"auswertungen_{year}_{month:02d}{filename_suffix}.pdf"
+    headers = {'Content-Disposition': f'attachment; filename="{filename}"'}
+
+    return Response(pdf_bytes, mimetype='application/pdf', headers=headers)
 
 
 @app.route('/api/reports/monthly/<int:employee_id>/<int:year>/<int:month>')
@@ -1087,30 +1204,13 @@ def reports_overview_export(year, month):
 @app.route('/api/reports/overview/<int:year>/<int:month>/export/pdf')
 def reports_overview_export_pdf(year, month):
     """Exportiere Monatsübersicht als PDF mithilfe von ReportLab."""
-    if month < 1 or month > 12:
-        return jsonify({'error': 'Ungültiger Monat'}), 400
+    return _build_reports_overview_pdf_response(year, month, include_details=False)
 
-    overview = get_month_overview(year, month)
-    prepared_overview = _format_reports_overview_for_pdf(overview.copy())
 
-    try:
-        month_name = MONTH_NAMES[month - 1]
-    except IndexError:
-        month_name = str(month)
-
-    generated_at = datetime.now()
-    try:
-        pdf_bytes = _render_reports_overview_pdf(prepared_overview, month_name, generated_at)
-    except Exception as exc:
-        logger.exception('PDF-Erstellung fehlgeschlagen')
-        return jsonify({'error': f'PDF-Erstellung fehlgeschlagen: {exc}'}), 500
-
-    filename = f"auswertungen_{year}_{month:02d}.pdf"
-    headers = {
-        'Content-Disposition': f'attachment; filename="{filename}"'
-    }
-
-    return Response(pdf_bytes, mimetype='application/pdf', headers=headers)
+@app.route('/api/reports/overview/<int:year>/<int:month>/export/pdf/detailed')
+def reports_overview_export_pdf_detailed(year, month):
+    """Exportiere Monatsübersicht als detailliertes PDF mit Tagesübersicht."""
+    return _build_reports_overview_pdf_response(year, month, include_details=True)
 
 # Statische Dateien servieren
 @app.route('/')
