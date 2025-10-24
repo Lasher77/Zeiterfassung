@@ -9,10 +9,11 @@ import json
 import csv
 import io
 import os
+import secrets
 from datetime import datetime, date
 from xml.sax.saxutils import escape
 
-from flask import Flask, request, jsonify, send_from_directory, Response
+from flask import Flask, request, jsonify, send_from_directory, Response, g
 from flask_cors import CORS
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
@@ -33,6 +34,22 @@ CORS(app)  # Erlaube Cross-Origin Requests
 
 logger = logging.getLogger(__name__)
 
+USERS = {
+    'mitarbeiter': {
+        'password': 'Tonis',
+        'role': 'employee',
+        'display_name': 'Mitarbeiter',
+    },
+    'admin': {
+        'password': 'Tonis',
+        'role': 'admin',
+        'display_name': 'Admin',
+    },
+}
+
+SESSIONS = {}
+LOGIN_EXEMPT_PATHS = {'/api/login', '/api/health'}
+
 # Datenbank-Pfad
 DB_PATH = 'zeiterfassung.db'
 
@@ -46,6 +63,63 @@ ENTRY_TYPE_LABELS = {
     'vacation': 'Urlaub',
     'sick': 'Krankheit'
 }
+
+def extract_token():
+    """Lese das Bearer-Token aus dem Authorization-Header"""
+    auth_header = request.headers.get('Authorization', '')
+    if auth_header.startswith('Bearer '):
+        return auth_header.split(' ', 1)[1].strip()
+    return None
+
+
+def get_current_user():
+    """Aktuell authentifizierte Nutzerinformationen"""
+    return getattr(g, 'current_user', None)
+
+
+def current_user_is_admin():
+    user = get_current_user()
+    return bool(user and user.get('role') == 'admin')
+
+
+def current_user_is_employee():
+    user = get_current_user()
+    return bool(user and user.get('role') == 'employee')
+
+
+def is_month_locked_for_employee(date_str):
+    """Prüfe, ob Mitarbeitende Änderungen für den Monat vornehmen dürfen"""
+    try:
+        entry_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+    except (TypeError, ValueError):
+        return False
+
+    today = date.today()
+    entry_month_start = entry_date.replace(day=1)
+    current_month_start = today.replace(day=1)
+    return entry_month_start < current_month_start
+
+
+@app.before_request
+def enforce_authentication():
+    """Sicherstellen, dass API-Aufrufe authentifiziert sind"""
+    if request.method == 'OPTIONS':
+        return
+
+    path = request.path
+    if not path.startswith('/api/'):
+        return
+
+    if path in LOGIN_EXEMPT_PATHS:
+        return
+
+    token = extract_token()
+    session = SESSIONS.get(token)
+    if not session:
+        return jsonify({'error': 'Authentifizierung erforderlich'}), 401
+
+    g.current_user = {**session, 'token': token}
+
 
 def init_database():
     """Initialisiere SQLite-Datenbank mit Tabellen"""
@@ -306,6 +380,39 @@ def health_check():
     """Health check endpoint"""
     return jsonify({'status': 'healthy', 'message': 'Zeiterfassung API läuft'})
 
+
+@app.route('/api/login', methods=['POST'])
+def login():
+    """Authentifiziere einen Benutzer und liefere ein Zugriffstoken"""
+    data = request.json or {}
+    username_input = (data.get('username') or '').strip()
+    password = data.get('password') or ''
+
+    normalized_username = username_input.lower()
+    user_definition = USERS.get(normalized_username)
+
+    if not user_definition or user_definition.get('password') != password:
+        return jsonify({'error': 'Ungültige Zugangsdaten'}), 401
+
+    token = secrets.token_hex(32)
+    session_info = {
+        'username': user_definition.get('display_name', username_input),
+        'role': user_definition.get('role'),
+    }
+    SESSIONS[token] = session_info
+
+    return jsonify({'token': token, 'user': session_info})
+
+
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    """Melde den aktuellen Benutzer ab"""
+    token = extract_token()
+    if token:
+        SESSIONS.pop(token, None)
+    return jsonify({'message': 'Abgemeldet'})
+
+
 @app.route('/api/employees', methods=['GET'])
 def get_employees():
     """Alle Mitarbeiter abrufen"""
@@ -318,8 +425,11 @@ def get_employees():
 @app.route('/api/employees', methods=['POST'])
 def create_employee():
     """Neuen Mitarbeiter erstellen"""
+    if not current_user_is_admin():
+        return jsonify({'error': 'Nur Administratoren dürfen Mitarbeitende anlegen'}), 403
+
     data = request.json
-    
+
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -343,8 +453,11 @@ def create_employee():
 @app.route('/api/employees/<int:employee_id>', methods=['PUT'])
 def update_employee(employee_id):
     """Mitarbeiter aktualisieren"""
+    if not current_user_is_admin():
+        return jsonify({'error': 'Nur Administratoren dürfen Mitarbeitende bearbeiten'}), 403
+
     data = request.json
-    
+
     conn = get_db_connection()
     conn.execute(
         'UPDATE employees SET name = ?, contract_hours = ?, has_commission = ?, is_active = ?, start_date = ?, end_date = ? WHERE id = ?',
@@ -426,7 +539,11 @@ def create_time_entry():
         else:
             period = f"bis {end.isoformat()}"
         return jsonify({'error': f'Datum außerhalb des Beschäftigungszeitraums ({period})'}), 400
-    
+
+    if current_user_is_employee() and is_month_locked_for_employee(data['date']):
+        conn.close()
+        return jsonify({'error': 'Der Monat ist abgeschlossen. Änderungen sind nicht mehr möglich.'}), 403
+
     # Prüfe ob bereits Eintrag für diesen Tag existiert
     existing = cursor.execute(
         'SELECT id FROM time_entries WHERE employee_id = ? AND date = ?',
@@ -515,7 +632,11 @@ def update_time_entry(entry_id):
         else:
             period = f"bis {end.isoformat()}"
         return jsonify({'error': f'Datum außerhalb des Beschäftigungszeitraums ({period})'}), 400
-    
+
+    if current_user_is_employee() and is_month_locked_for_employee(entry_date.isoformat()):
+        conn.close()
+        return jsonify({'error': 'Der Monat ist abgeschlossen. Änderungen sind nicht mehr möglich.'}), 403
+
     # Update Eintrag
     cursor.execute('''
         UPDATE time_entries SET 
@@ -557,6 +678,10 @@ def delete_time_entry(entry_id):
 
     entry_date = entry['date']
 
+    if current_user_is_employee() and is_month_locked_for_employee(entry_date):
+        conn.close()
+        return jsonify({'error': 'Der Monat ist abgeschlossen. Änderungen sind nicht mehr möglich.'}), 403
+
     cursor.execute('DELETE FROM time_entries WHERE id = ?', (entry_id,))
 
     conn.commit()
@@ -570,6 +695,9 @@ def delete_time_entry(entry_id):
 @app.route('/api/revenue', methods=['GET'])
 def get_revenue():
     """Umsätze abrufen"""
+    if not current_user_is_admin():
+        return jsonify({'error': 'Nur Administratoren dürfen auf Umsätze zugreifen'}), 403
+
     month = request.args.get('month')
     year = request.args.get('year')
     
@@ -592,6 +720,9 @@ def get_revenue():
 @app.route('/api/revenue', methods=['POST'])
 def create_revenue():
     """Umsatz für ein Datum erstellen oder aktualisieren"""
+    if not current_user_is_admin():
+        return jsonify({'error': 'Nur Administratoren dürfen Umsätze bearbeiten'}), 403
+
     data = request.json
 
     conn = get_db_connection()
@@ -628,6 +759,9 @@ def create_revenue():
 @app.route('/api/commission-settings', methods=['GET', 'POST'])
 def commission_settings():
     """Provisionseinstellungen lesen oder speichern"""
+    if not current_user_is_admin():
+        return jsonify({'error': 'Nur Administratoren dürfen Provisionseinstellungen bearbeiten'}), 403
+
     conn = get_db_connection()
     cursor = conn.cursor()
     if request.method == 'GET':
@@ -653,6 +787,9 @@ def commission_settings():
 @app.route('/api/commission-thresholds', methods=['GET', 'POST'])
 def commission_thresholds():
     """Provisionsschwellen abrufen oder speichern"""
+    if not current_user_is_admin():
+        return jsonify({'error': 'Nur Administratoren dürfen Provisionsschwellen bearbeiten'}), 403
+
     conn = get_db_connection()
     cursor = conn.cursor()
     if request.method == 'GET':
@@ -1117,11 +1254,115 @@ def _build_reports_overview_pdf_response(year, month, include_details=False):
     return Response(pdf_bytes, mimetype='application/pdf', headers=headers)
 
 
+def _build_employee_monthly_pdf(employee, entries, summary, year, month):
+    """Erzeuge ein PDF für den Monatsbericht eines Mitarbeiters"""
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, title='Monatsbericht')
+    styles = getSampleStyleSheet()
+
+    month_name = MONTH_NAMES[month - 1] if 1 <= month <= 12 else str(month)
+    generated_at = datetime.now().strftime('%d.%m.%Y %H:%M')
+
+    story = []
+    title = Paragraph(
+        f"Monatsbericht {escape(employee['name'])} – {escape(month_name)} {year}",
+        styles['Title'],
+    )
+    story.append(title)
+    story.append(Spacer(1, 6 * mm))
+    story.append(Paragraph(f"Generiert am {generated_at} Uhr", styles['Normal']))
+    story.append(Spacer(1, 10 * mm))
+
+    summary_data = [
+        ['Gesamtstunden', f"{summary.get('total_hours', 0):.2f}"],
+        ['Arbeitstage', summary.get('work_days', 0)],
+        ['Urlaubstage', summary.get('vacation_days', 0)],
+        ['Krankheitstage', summary.get('sick_days', 0)],
+        ['Provision gesamt (€)', f"{summary.get('total_commission', 0):.2f}"],
+        ['Duftreisen vor 18 Uhr', summary.get('total_duftreise_bis_18', 0)],
+        ['Duftreisen nach 18 Uhr', summary.get('total_duftreise_ab_18', 0)],
+    ]
+
+    if 'contract_hours_month' in summary:
+        summary_data.append(['Vertragsstunden (Monat)', f"{summary['contract_hours_month']:.2f}"])
+
+    summary_table = Table(summary_data, colWidths=[70 * mm, 50 * mm])
+    summary_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
+        ('BACKGROUND', (0, 0), (-1, -1), colors.whitesmoke),
+    ]))
+
+    story.append(summary_table)
+    story.append(Spacer(1, 12 * mm))
+
+    table_header = ['Datum', 'Art', 'Arbeitszeit', 'Pause (Min)', 'Provision (€)', 'Duftreisen', 'Notizen']
+    table_rows = [table_header]
+
+    for entry in entries:
+        entry_date = entry.get('date')
+        formatted_date = ''
+        if entry_date:
+            try:
+                formatted_date = datetime.strptime(entry_date, '%Y-%m-%d').strftime('%d.%m.%Y')
+            except ValueError:
+                formatted_date = entry_date
+
+        entry_type_label = ENTRY_TYPE_LABELS.get(entry.get('entry_type'), entry.get('entry_type', ''))
+        if entry.get('entry_type') == 'work':
+            work_time = ' - '.join(filter(None, [entry.get('start_time'), entry.get('end_time')]))
+        else:
+            work_time = ''
+
+        pause_minutes = entry.get('pause_minutes') or 0
+        commission_value = entry.get('commission') or 0
+        duft_bis = entry.get('duftreise_bis_18') or 0
+        duft_ab = entry.get('duftreise_ab_18') or 0
+        duft_text = ''
+        if duft_bis or duft_ab:
+            duft_text = f"bis 18: {duft_bis}\nab 18: {duft_ab}"
+
+        notes_raw = entry.get('notes') or ''
+        notes_paragraph = Paragraph(escape(notes_raw).replace('\n', '<br/>'), styles['BodyText'])
+
+        table_rows.append([
+            formatted_date,
+            entry_type_label,
+            work_time,
+            pause_minutes,
+            f"{commission_value:.2f}",
+            duft_text,
+            notes_paragraph,
+        ])
+
+    if len(table_rows) == 1:
+        table_rows.append(['-', '-', '-', '-', '-', '-', Paragraph('Keine Einträge', styles['BodyText'])])
+
+    entry_table = Table(
+        table_rows,
+        colWidths=[22 * mm, 24 * mm, 28 * mm, 24 * mm, 26 * mm, 32 * mm, 60 * mm],
+        repeatRows=1,
+    )
+    entry_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+        ('GRID', (0, 0), (-1, -1), 0.25, colors.grey),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+    ]))
+
+    story.append(entry_table)
+
+    doc.build(story)
+    return buffer.getvalue()
+
+
 @app.route('/api/reports/monthly/<int:employee_id>/<int:year>/<int:month>')
 def monthly_report(employee_id, year, month):
     """Monatsbericht für Mitarbeiter"""
     conn = get_db_connection()
-    
+
     # Mitarbeiter-Info
     employee = conn.execute('SELECT * FROM employees WHERE id = ?', (employee_id,)).fetchone()
     conn.close()
@@ -1149,9 +1390,43 @@ def monthly_report(employee_id, year, month):
     return jsonify(report)
 
 
+@app.route('/api/reports/monthly/<int:employee_id>/<int:year>/<int:month>/export/pdf')
+def monthly_report_pdf(employee_id, year, month):
+    """Erzeuge ein PDF für den Monatsbericht eines Mitarbeiters"""
+    conn = get_db_connection()
+    employee = conn.execute('SELECT * FROM employees WHERE id = ?', (employee_id,)).fetchone()
+    conn.close()
+
+    if not employee:
+        return jsonify({'error': 'Mitarbeiter nicht gefunden'}), 404
+
+    entries_rows = fetch_employee_month_entries(employee_id, year, month)
+    summary = build_month_summary(entries_rows, employee['contract_hours'])
+    entries_for_pdf = [dict(row) for row in entries_rows]
+
+    try:
+        pdf_bytes = _build_employee_monthly_pdf(dict(employee), entries_for_pdf, summary, year, month)
+    except Exception as exc:
+        logger.exception('PDF-Erstellung fehlgeschlagen')
+        return jsonify({'error': f'PDF-Erstellung fehlgeschlagen: {exc}'}), 500
+
+    safe_name = ''.join(
+        ch for ch in employee['name'] if ch.isalnum() or ch in ('_', '-', '.')
+    ).strip()
+    if not safe_name:
+        safe_name = f'mitarbeiter_{employee_id}'
+
+    filename = f"zeiterfassung_{safe_name}_{year}_{month:02d}.pdf"
+    headers = {'Content-Disposition': f'attachment; filename="{filename}"'}
+
+    return Response(pdf_bytes, mimetype='application/pdf', headers=headers)
+
+
 @app.route('/api/reports/overview/<int:year>/<int:month>')
 def reports_overview(year, month):
     """Monatliche Übersicht für alle aktiven Mitarbeitenden"""
+    if not current_user_is_admin():
+        return jsonify({'error': 'Nur Administratoren dürfen Auswertungen abrufen'}), 403
     overview = get_month_overview(year, month)
     return jsonify(overview)
 
@@ -1159,6 +1434,8 @@ def reports_overview(year, month):
 @app.route('/api/reports/overview/<int:year>/<int:month>/export')
 def reports_overview_export(year, month):
     """Exportiere Monatsübersicht als CSV"""
+    if not current_user_is_admin():
+        return jsonify({'error': 'Nur Administratoren dürfen Auswertungen exportieren'}), 403
     overview = get_month_overview(year, month)
 
     output = io.StringIO()
@@ -1204,12 +1481,16 @@ def reports_overview_export(year, month):
 @app.route('/api/reports/overview/<int:year>/<int:month>/export/pdf')
 def reports_overview_export_pdf(year, month):
     """Exportiere Monatsübersicht als PDF mithilfe von ReportLab."""
+    if not current_user_is_admin():
+        return jsonify({'error': 'Nur Administratoren dürfen Auswertungen exportieren'}), 403
     return _build_reports_overview_pdf_response(year, month, include_details=False)
 
 
 @app.route('/api/reports/overview/<int:year>/<int:month>/export/pdf/detailed')
 def reports_overview_export_pdf_detailed(year, month):
     """Exportiere Monatsübersicht als detailliertes PDF mit Tagesübersicht."""
+    if not current_user_is_admin():
+        return jsonify({'error': 'Nur Administratoren dürfen Auswertungen exportieren'}), 403
     return _build_reports_overview_pdf_response(year, month, include_details=True)
 
 # Statische Dateien servieren
