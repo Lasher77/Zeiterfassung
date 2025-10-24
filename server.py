@@ -64,6 +64,41 @@ ENTRY_TYPE_LABELS = {
     'sick': 'Krankheit'
 }
 
+COMMISSION_HOUR_THRESHOLD = 160
+
+
+def calculate_work_hours(start_time, end_time, pause_minutes):
+    """Berechne Arbeitsstunden zwischen zwei Zeitpunkten unter Berücksichtigung der Pause."""
+    if not start_time or not end_time:
+        return 0.0
+
+    start = datetime.strptime(start_time, '%H:%M')
+    end = datetime.strptime(end_time, '%H:%M')
+    duration = (end - start).total_seconds() / 3600
+    pause = (pause_minutes or 0) / 60
+    return max(duration - pause, 0.0)
+
+
+def get_employee_hours_before(cursor, employee_id, date_str):
+    """Summiere alle Arbeitsstunden eines Mitarbeiters vor einem bestimmten Datum."""
+    rows = cursor.execute(
+        '''
+            SELECT start_time, end_time, pause_minutes
+            FROM time_entries
+            WHERE employee_id = ?
+              AND entry_type = 'work'
+              AND start_time IS NOT NULL AND end_time IS NOT NULL
+              AND date < ?
+        ''',
+        (employee_id, date_str),
+    ).fetchall()
+
+    total = 0.0
+    for row in rows:
+        total += calculate_work_hours(row['start_time'], row['end_time'], row['pause_minutes'])
+    return total
+
+
 def extract_token():
     """Lese das Bearer-Token aus dem Authorization-Header"""
     auth_header = request.headers.get('Authorization', '')
@@ -297,17 +332,26 @@ def compute_commission_for_date(date_str):
 
     emp_hours = {}
     entry_ids = {}
+    ineligible_entry_ids = []
     all_employee_ids = set()
     for row in entries:
-        start = datetime.strptime(row['start_time'], '%H:%M')
-        end = datetime.strptime(row['end_time'], '%H:%M')
-        hours = (end - start).seconds / 3600 - (row['pause_minutes'] or 0) / 60
+        hours = calculate_work_hours(row['start_time'], row['end_time'], row['pause_minutes'])
         all_employee_ids.add(row['employee_id'])
 
         if row['has_commission']:
             emp_hours.setdefault(row['employee_id'], 0)
             emp_hours[row['employee_id']] += hours
             entry_ids[row['employee_id']] = row['id']
+
+    eligible_hours = {}
+    for emp_id, hours in emp_hours.items():
+        previous_hours = get_employee_hours_before(cursor, emp_id, date_str)
+        if previous_hours + hours >= COMMISSION_HOUR_THRESHOLD:
+            eligible_hours[emp_id] = hours
+        else:
+            ineligible_entry_ids.append(entry_ids[emp_id])
+
+    emp_hours = eligible_hours
 
     employee_count = len(all_employee_ids)
 
@@ -355,6 +399,12 @@ def compute_commission_for_date(date_str):
         cursor.execute(
             'UPDATE time_entries SET commission = ? WHERE id = ?',
             (round(commission, 2), entry_id),
+        )
+
+    for entry_id in ineligible_entry_ids:
+        cursor.execute(
+            'UPDATE time_entries SET commission = 0 WHERE id = ?',
+            (entry_id,),
         )
 
     # Alle anderen Einträge des Tages auf 0 setzen
