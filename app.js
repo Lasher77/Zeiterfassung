@@ -22,6 +22,11 @@ let reportsOverviewSummaries = [];
 let currentReportsMonth = currentMonth;
 let currentReportsYear = currentYear;
 
+const INACTIVITY_LIMIT_MS = 2 * 60 * 1000;
+const INACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'];
+let inactivityTimeoutId = null;
+let inactivityListenersRegistered = false;
+
 // Format date as YYYY-MM-DD in local time
 function formatDate(date) {
     const tzOffset = date.getTimezoneOffset() * 60000;
@@ -178,6 +183,7 @@ function setAuthState(authData) {
 
     updateAuthVisibility();
     applyRoleRestrictions();
+    updateInactivityTracking();
 }
 
 function clearAuthState() {
@@ -194,6 +200,7 @@ function clearAuthState() {
     resetAppData();
     updateAuthVisibility();
     applyRoleRestrictions();
+    clearInactivityTimer();
 }
 
 function handleUnauthorized() {
@@ -270,6 +277,58 @@ async function logout() {
     }
 
     clearAuthState();
+}
+
+function requiresInactivityTracking() {
+    return isAuthenticated() && isEmployeeRole();
+}
+
+function clearInactivityTimer() {
+    if (inactivityTimeoutId !== null) {
+        window.clearTimeout(inactivityTimeoutId);
+        inactivityTimeoutId = null;
+    }
+}
+
+function scheduleInactivityTimer() {
+    clearInactivityTimer();
+    if (!requiresInactivityTracking()) {
+        return;
+    }
+
+    inactivityTimeoutId = window.setTimeout(() => {
+        alert('Sie wurden aufgrund von Inaktivität abgemeldet.');
+        clearInactivityTimer();
+        logout();
+    }, INACTIVITY_LIMIT_MS);
+}
+
+function handleUserActivity() {
+    if (!requiresInactivityTracking()) {
+        clearInactivityTimer();
+        return;
+    }
+
+    scheduleInactivityTimer();
+}
+
+function updateInactivityTracking() {
+    if (requiresInactivityTracking()) {
+        scheduleInactivityTimer();
+    } else {
+        clearInactivityTimer();
+    }
+}
+
+function setupInactivityTracking() {
+    if (inactivityListenersRegistered) {
+        return;
+    }
+
+    INACTIVITY_EVENTS.forEach(eventName => {
+        document.addEventListener(eventName, handleUserActivity, true);
+    });
+    inactivityListenersRegistered = true;
 }
 
 function setupApplicationEventListeners() {
@@ -387,7 +446,10 @@ function setupAuthHandlers() {
 }
 
 // Initialize app
-document.addEventListener('DOMContentLoaded', setupAuthHandlers);
+document.addEventListener('DOMContentLoaded', () => {
+    setupInactivityTracking();
+    setupAuthHandlers();
+});
 
 // API Functions
 async function apiCall(endpoint, options = {}) {
