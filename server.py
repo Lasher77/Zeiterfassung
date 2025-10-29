@@ -745,8 +745,8 @@ def delete_time_entry(entry_id):
 @app.route('/api/revenue', methods=['GET'])
 def get_revenue():
     """Umsätze abrufen"""
-    if not current_user_is_admin():
-        return jsonify({'error': 'Nur Administratoren dürfen auf Umsätze zugreifen'}), 403
+    if not (current_user_is_admin() or current_user_is_employee()):
+        return jsonify({'error': 'Nur Administratoren oder Mitarbeitende dürfen auf Umsätze zugreifen'}), 403
 
     month = request.args.get('month')
     year = request.args.get('year')
@@ -770,13 +770,19 @@ def get_revenue():
 @app.route('/api/revenue', methods=['POST'])
 def create_revenue():
     """Umsatz für ein Datum erstellen oder aktualisieren"""
-    if not current_user_is_admin():
-        return jsonify({'error': 'Nur Administratoren dürfen Umsätze bearbeiten'}), 403
+    is_admin = current_user_is_admin()
+    is_employee = current_user_is_employee()
+    if not (is_admin or is_employee):
+        return jsonify({'error': 'Nur Administratoren oder Mitarbeitende dürfen Umsätze bearbeiten'}), 403
 
     data = request.json
 
     conn = get_db_connection()
     cursor = conn.cursor()
+
+    if is_employee and is_month_locked_for_employee(data.get('date')):
+        conn.close()
+        return jsonify({'error': 'Der Monat ist abgeschlossen. Änderungen sind nicht mehr möglich.'}), 403
 
     # Prüfen, ob für das Datum bereits ein Umsatz existiert
     existing = cursor.execute(

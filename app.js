@@ -407,6 +407,9 @@ async function initializeApp() {
         if (isAdmin()) {
             await loadCommissionSettings();
             await loadCommissionThresholds();
+        }
+
+        if (isAdmin() || isEmployeeRole()) {
             await loadRevenueCalendar();
         }
     } catch (error) {
@@ -1434,7 +1437,7 @@ async function saveEmployee() {
 // -------------------- Umsatzfunktionen --------------------
 
 async function loadRevenueCalendar() {
-    if (!isAdmin()) {
+    if (!isAdmin() && !isEmployeeRole()) {
         return;
     }
     const month = parseInt(document.getElementById('revMonthSelect').value);
@@ -1501,7 +1504,7 @@ function renderRevenueCalendar() {
 }
 
 function openRevenueModal(dateStr) {
-    if (!isAdmin()) {
+    if (!isAdmin() && !isEmployeeRole()) {
         return;
     }
     const modal = document.getElementById('revenueModal');
@@ -1526,7 +1529,7 @@ function closeRevenueModal() {
 }
 
 async function saveRevenue() {
-    if (!isAdmin()) {
+    if (!isAdmin() && !isEmployeeRole()) {
         alert('Keine Berechtigung.');
         return;
     }
