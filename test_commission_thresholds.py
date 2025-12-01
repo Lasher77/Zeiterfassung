@@ -276,6 +276,112 @@ class CommissionThresholdsTestCase(unittest.TestCase):
         self.assertEqual(january_commission, 0)
         self.assertGreater(february_commission, 0)
 
+    def test_no_commission_when_threshold_missing_for_employee_count(self):
+        conn = server.get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute('DELETE FROM commission_thresholds')
+        cursor.execute('DELETE FROM time_entries')
+        cursor.execute('DELETE FROM revenue')
+        cursor.execute('DELETE FROM employees')
+
+        # Nur eine Schwelle für einen Mitarbeiter hinterlegen
+        cursor.execute(
+            '''
+                INSERT INTO commission_thresholds (weekday, employee_count, threshold, valid_from)
+                VALUES (?, ?, ?, ?)
+            ''',
+            (0, 1, 200, '2024-01-01'),
+        )
+
+        # Erster Mitarbeiter mit Provision
+        cursor.execute(
+            '''
+                INSERT INTO employees (
+                    name, contract_hours, has_commission, is_active, start_date
+                ) VALUES (?, ?, ?, ?, ?)
+            ''',
+            ('Erster', 40, 1, 1, '2024-01-01'),
+        )
+        first_employee = cursor.lastrowid
+
+        # Zweiter Mitarbeiter trägt sich erst später ein
+        cursor.execute(
+            '''
+                INSERT INTO employees (
+                    name, contract_hours, has_commission, is_active, start_date
+                ) VALUES (?, ?, ?, ?, ?)
+            ''',
+            ('Nachtrag', 40, 1, 1, '2024-01-01'),
+        )
+        second_employee = cursor.lastrowid
+
+        # Umsatz unterhalb der Schwelle für einen Mitarbeiter
+        cursor.execute(
+            'INSERT INTO revenue (date, amount, notes) VALUES (?, ?, ?)',
+            ('2024-06-03', 150, ''),
+        )
+
+        # Erster Mitarbeitereintrag (bereits keine Provision wegen Schwellwert)
+        cursor.execute(
+            '''
+                INSERT INTO time_entries (
+                    employee_id, date, entry_type, start_time, end_time, pause_minutes,
+                    commission, duftreise_bis_18, duftreise_ab_18, notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''',
+            (first_employee, '2024-06-03', 'work', '09:00', '17:00', 60, 0, 0, 0, ''),
+        )
+
+        conn.commit()
+        conn.close()
+
+        # Initial keine Provision
+        server.compute_commission_for_date('2024-06-03')
+
+        conn = server.get_db_connection()
+        cursor = conn.cursor()
+        first_commission = cursor.execute(
+            'SELECT commission FROM time_entries WHERE employee_id = ? AND date = ?',
+            (first_employee, '2024-06-03'),
+        ).fetchone()[0]
+        conn.close()
+
+        self.assertEqual(first_commission, 0)
+
+        # Zweiter Mitarbeiter trägt sich nachträglich ein
+        conn = server.get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            '''
+                INSERT INTO time_entries (
+                    employee_id, date, entry_type, start_time, end_time, pause_minutes,
+                    commission, duftreise_bis_18, duftreise_ab_18, notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''',
+            (second_employee, '2024-06-03', 'work', '09:00', '17:00', 60, 0, 0, 0, ''),
+        )
+        conn.commit()
+        conn.close()
+
+        # Trotz fehlender Schwelle für zwei Mitarbeitende keine Provision
+        server.compute_commission_for_date('2024-06-03')
+
+        conn = server.get_db_connection()
+        cursor = conn.cursor()
+        first_commission_after = cursor.execute(
+            'SELECT commission FROM time_entries WHERE employee_id = ? AND date = ?',
+            (first_employee, '2024-06-03'),
+        ).fetchone()[0]
+        second_commission_after = cursor.execute(
+            'SELECT commission FROM time_entries WHERE employee_id = ? AND date = ?',
+            (second_employee, '2024-06-03'),
+        ).fetchone()[0]
+        conn.close()
+
+        self.assertEqual(first_commission_after, 0)
+        self.assertEqual(second_commission_after, 0)
+
 
 if __name__ == '__main__':
     unittest.main()

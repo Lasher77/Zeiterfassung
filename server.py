@@ -365,11 +365,17 @@ def compute_commission_for_date(date_str):
         ''',
         (weekday, employee_count, date_str),
     ).fetchone()
-    threshold = th['threshold'] if th else 0
+    if th:
+        threshold = th['threshold']
+    else:
+        configured_thresholds = cursor.execute(
+            'SELECT COUNT(*) AS cnt FROM commission_thresholds'
+        ).fetchone()['cnt']
+        threshold = 0 if configured_thresholds == 0 else None
 
     total_hours = sum(emp_hours.values())
     total_commission = 0
-    if revenue >= threshold and total_hours > 0 and percentage > 0:
+    if threshold is not None and revenue >= threshold and total_hours > 0 and percentage > 0:
         total_commission = revenue * (percentage / 100.0)
 
     ids = list(entry_ids.values())
