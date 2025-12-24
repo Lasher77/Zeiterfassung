@@ -333,12 +333,12 @@ def compute_commission_for_date(date_str):
     emp_hours = {}
     entry_ids = {}
     ineligible_entry_ids = []
-    all_employee_ids = set()
+    commission_employee_ids = set()
     for row in entries:
         hours = calculate_work_hours(row['start_time'], row['end_time'], row['pause_minutes'])
-        all_employee_ids.add(row['employee_id'])
 
         if row['has_commission']:
+            commission_employee_ids.add(row['employee_id'])
             emp_hours.setdefault(row['employee_id'], 0)
             emp_hours[row['employee_id']] += hours
             entry_ids[row['employee_id']] = row['id']
@@ -353,7 +353,7 @@ def compute_commission_for_date(date_str):
 
     emp_hours = eligible_hours
 
-    employee_count = len(all_employee_ids)
+    employee_count = len(commission_employee_ids)
 
     weekday = datetime.strptime(date_str, '%Y-%m-%d').weekday()
     th = cursor.execute(
@@ -1574,4 +1574,3 @@ if __name__ == '__main__':
     print(f"Öffne http://localhost:{port} in deinem Browser")
     debug_mode = os.environ.get("FLASK_DEBUG", "0").lower() in ("1", "true")
     app.run(host='0.0.0.0', port=port, debug=debug_mode)
-
