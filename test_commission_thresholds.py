@@ -119,7 +119,7 @@ class CommissionThresholdsTestCase(unittest.TestCase):
         self.assertEqual(commission_old, 15.0)
         self.assertEqual(commission_new, 0)
 
-    def test_threshold_counts_all_employees(self):
+    def test_threshold_counts_only_commission_eligible_employees(self):
         conn = server.get_db_connection()
         cursor = conn.cursor()
 
@@ -137,6 +137,18 @@ class CommissionThresholdsTestCase(unittest.TestCase):
             ('Eligible Employee', 40, 1, 1, '2023-01-01'),
         )
         eligible_id = cursor.lastrowid
+
+        # Vorarbeit, um die 160-Stunden-Schwelle zu erreichen
+        for day in range(1, 17):
+            cursor.execute(
+                '''
+                    INSERT INTO time_entries (
+                        employee_id, date, entry_type, start_time, end_time, pause_minutes,
+                        commission, duftreise_bis_18, duftreise_ab_18, notes
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''',
+                (eligible_id, f'2024-05-{day:02d}', 'work', '08:00', '18:00', 0, 0, 0, 0, ''),
+            )
 
         cursor.execute(
             '''
@@ -200,7 +212,7 @@ class CommissionThresholdsTestCase(unittest.TestCase):
         ).fetchone()[0]
         conn.close()
 
-        self.assertEqual(commission, 0)
+        self.assertGreater(commission, 0)
 
 
     def test_commission_requires_160_hours_across_months(self):
